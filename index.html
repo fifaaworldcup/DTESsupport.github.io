@@ -1,385 +1,400 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="theme-color" content="#1D4ED8">
-<title>Vancouver DTES Lifeline Map</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vancouver DTES Lifeline Map</title>
 
-<!-- Local libs expected in /libs/ (see README_add_libs.md) -->
-<link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="libs/leaflet/leaflet.css">
-<link rel="stylesheet" href="css/tailwind.min.css">
+    <!-- Local CSS libraries -->
+    <link rel="stylesheet" href="libs/leaflet/leaflet.css">
+    <link rel="stylesheet" href="libs/leaflet-routing-machine/leaflet-routing-machine.css">
+    <link rel="stylesheet" href="libs/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="css/tailwind.css">
 
-<style>
-:root{--bg:#f6f7fb;--muted:#6b7280}
-html,body{height:100%;margin:0;font-family:Inter, "Nunito Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#0f172a}
-.container{max-width:1100px;margin:18px auto;padding:12px}
-#map{height:70vh;min-height:380px;border-radius:12px;background:#fff;box-shadow:0 8px 30px rgba(12,12,13,.06);overflow:hidden}
-.chip{display:inline-flex;gap:.5rem;align-items:center;padding:.4rem .6rem;border-radius:999px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.06);font-weight:600;cursor:pointer}
-.hidden{display:none!important}
-.rtl{direction:rtl}
-#listView{display:none;background:#fff;padding:12px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.06);max-height:60vh;overflow:auto}
-.resource-card{border-bottom:1px solid #eef2f7;padding:10px 0}
-.resource-card:last-child{border-bottom:none}
-#accessibilityPanel{position:fixed;left:18px;bottom:18px;z-index:1100;background:rgba(255,255,255,.98);padding:10px;border-radius:10px;box-shadow:0 8px 24px rgba(12,12,13,.12)}
-#accessibilityPanel.minimized{height:40px;overflow:hidden;width:60px;padding:6px;border-radius:8px}
-.skip-link{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
-.skip-link:focus{left:10px;top:10px;width:auto;height:auto;padding:8px 12px;background:#111;color:#fff;border-radius:6px;z-index:3000}
-[role="status"]{outline: none}
-.popup-btn{padding:.4rem .7rem;border-radius:.5rem;font-weight:600;display:inline-flex;align-items:center;justify-content:center;margin-top:10px;margin-right:5px;font-size:.85rem;cursor:pointer;border:none}
-.filter-button{padding:.5rem .7rem;border-radius:8px;border:1px solid rgba(0,0,0,.05);background:#fff;cursor:pointer;font-weight:700}
-.filter-button.active{outline:3px solid rgba(29,78,216,.12)}
-.high-contrast{background:#000;color:#fff}
-</style>
+    <!-- Custom styles (spinner, modals, map container) -->
+    <style>
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #loadingOverlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.98); z-index: 1010;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            transition: opacity 0.5s;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            border-left-color: #1D4ED8;
+            animation: spin 1s ease infinite;
+        }
+        .status-indicator { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
+        .status-open { background-color: #10B981; }
+        .status-closed { background-color: #EF4444; }
+        #quickExitBtn {
+            position: fixed; bottom: 20px; right: 20px;
+            background-color: #EF4444; color: white;
+            padding: 10px 15px; border-radius: 5px;
+            cursor: pointer; z-index: 1000; display: none;
+        }
+        .language-selector {
+            position: fixed; top: 10px; right: 10px; z-index: 1000;
+        }
+        .qr-modal { display: none; position: fixed; z-index: 1050;
+                    left: 0; top: 0; width: 100%; height: 100%;
+                    background-color: rgba(0,0,0,0.5); }
+        .qr-modal-content {
+            background-color: #fefefe; margin: 15% auto;
+            padding: 20px; border: 1px solid #888;
+            width: 80%; max-width: 400px; border-radius: 10px;
+            text-align: center;
+        }
+        .close-modal { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close-modal:hover { color: black; }
+        /* Map container */
+        #map {
+            height: 70vh; width: 100%; min-height: 400px;
+            border-radius: 0.75rem; background-color: #f3f4f6;
+        }
+    </style>
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to content</a>
 
-<div class="container" id="main" role="main" aria-live="polite">
-  <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-    <div>
-      <h1 id="mainTitle" style="font-size:22px;margin:0 0 6px 0;">Vancouver DTES Lifeline Map</h1>
-      <div id="subtitle" style="color:var(--muted);font-size:14px;">Immediate access to food, shelters, harm reduction, and hotlines.</div>
+    <!-- Loading overlay -->
+    <div id="loadingOverlay">
+        <div class="spinner mb-4"></div>
+        <div class="text-2xl font-bold text-gray-800">DTES Lifeline Map</div>
+        <div class="text-sm text-gray-500 mt-2">Loading community resources...</div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <select id="languageSelect" aria-label="Choose language" class="chip" style="padding:6px;border-radius:6px;">
-        <option value="en">English</option>
-        <option value="zh">中文</option>
-        <option value="es">Español</option>
-        <option value="fr">Français</option>
-        <option value="bn">বাংলা</option>
-        <option value="tl">Tagalog</option>
-        <option value="ar">العربية</option>
-        <option value="fa">فارسی</option>
-        <option value="hi">हिन्दी</option>
-        <option value="ur">اردو</option>
-        <option value="pa">ਪੰਜਾਬੀ</option>
-        <option value="nl">Nederlands</option>
-        <option value="it">Italiano</option>
-        <option value="sv">Svenska</option>
-        <option value="de">Deutsch</option>
-        <option value="pt">Português</option>
-      </select>
-      <button id="toggleListView" class="chip" title="Toggle list-only view">List view</button>
+
+    <!-- Language selector -->
+    <div class="language-selector">
+        <select id="languageSelect" class="bg-white border border-gray-300 rounded px-3 py-1 text-sm shadow-lg">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="bn">বাংলা</option>
+            <option value="tl">Tagalog</option>
+            <option value="ar">العربية</option>
+            <option value="fa">فارسی</option>
+            <option value="hi">हिन्दी</option>
+            <option value="ur">اردو</option>
+            <option value="pa">ਪੰਜਾਬੀ</option>
+        </select>
     </div>
-  </header>
 
-  <div id="offlineBanner" role="status" aria-live="polite" style="display:none;background:#ffedd5;color:#7c2d12;padding:8px 12px;border-radius:8px;margin-bottom:12px;"></div>
-
-  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
-    <input id="searchBar" placeholder="Search by name, type, or service" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6edf3;" aria-label="Search resources" />
-    <button id="locateUserButton" class="chip" title="Find my location">Find me</button>
-    <button id="emergencyButton" class="chip" style="background:#ef4444;color:#fff;">911</button>
-  </div>
-
-  <div id="map" aria-label="Map area"></div>
-
-  <div id="listView" aria-live="polite"></div>
-
-  <footer style="margin-top:12px;">
-    <div id="hotlinesTitle" style="font-weight:700;margin-bottom:6px;">Hotlines & Support</div>
-    <div id="hotlinesGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;"></div>
-    <div style="color:var(--muted);font-size:12px;margin-top:10px;">Made for the DTES community — verify hours by calling first.</div>
-  </footer>
-</div>
-
-<!-- QR modal -->
-<div id="qrModal" class="hidden" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:3200;">
-  <div style="background:#fff;padding:16px;border-radius:8px;max-width:420px;width:90%;">
-    <button id="closeQr" style="float:right;background:none;border:none;font-size:18px;">×</button>
-    <h3 id="qrTitle">QR Code</h3>
-    <div id="qrcode" style="margin:10px auto;text-align:center;"></div>
-    <div id="qrName" style="color:var(--muted);font-size:13px;"></div>
-  </div>
-</div>
-
-<!-- Accessibility panel -->
-<div id="accessibilityPanel" role="region" aria-label="Accessibility controls">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-    <strong>Accessibility</strong>
-    <button id="minimizeAccess" class="chip" title="Minimize accessibility panel">━</button>
-  </div>
-
-  <div id="accessControls">
-    <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;">
-      <button id="contrastToggle" class="chip">High contrast</button>
-      <button id="dyslexicToggle" class="chip">Dyslexic font</button>
+    <!-- QR Code Modal -->
+    <div id="qrModal" class="qr-modal">
+        <div class="qr-modal-content">
+            <span class="close-modal">×</span>
+            <h2 class="text-lg font-bold mb-4">Location QR Code</h2>
+            <p class="mb-4">Scan this code to get directions on your phone</p>
+            <div id="qrcode"></div>
+            <p id="qrLocationName" class="mt-4 text-sm text-gray-600"></p>
+        </div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <button id="fontDec" class="chip">A-</button>
-      <button id="fontInc" class="chip">A+</button>
-      <button id="readPopupBtn" class="chip">Read popup</button>
+
+    <!-- Quick Exit button -->
+    <button id="quickExitBtn">
+        <i class="fas fa-times mr-2"></i> Quick Exit
+    </button>
+
+    <!-- Main content -->
+    <div id="mainAppContent" class="container mx-auto p-4 md:p-8 opacity-0 transition-opacity duration-500">
+        <header class="bg-white p-6 shadow-xl rounded-xl mb-6">
+            <h1 class="text-4xl font-extrabold text-gray-900 mb-2">Vancouver DTES Lifeline Map</h1>
+            <p class="text-gray-600 mb-2">
+                Instant access to harm reduction, supervised consumption, food banks, shelters, detox centers, and urgent care services.
+            </p>
+            <p class="text-sm text-gray-500 mb-2">
+                <span id="userLocationStatus" class="font-semibold text-gray-700">Ready to use</span>
+                <span class="mx-2">|</span>
+                <span id="resourceCount" class="text-blue-600 font-semibold">0 verified locations</span>
+            </p>
+            <div class="text-xs text-red-600 font-semibold mt-3 bg-red-50 p-3 rounded-lg border border-red-200">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <span>Important: Service hours may change.</span>
+            </div>
+        </header>
+
+        <!-- Map -->
+        <div id="map"></div>
+
+        <!-- Category filters -->
+        <div class="py-4 grid grid-cols-3 md:grid-cols-6 gap-2 text-center">
+            <button class="filter-button bg-white hover:bg-blue-50 text-gray-700 font-semibold py-2 rounded" data-type="Naloxone">
+                <i class="fas fa-laptop-medical mr-1"></i> Naloxone Kits
+            </button>
+            <button class="filter-button bg-white hover:bg-green-50 text-gray-700 font-semibold py-2 rounded" data-type="Injection Site">
+                <i class="fas fa-syringe mr-1"></i> Safe Injection
+            </button>
+            <button class="filter-button bg-white hover:bg-orange-50 text-gray-700 font-semibold py-2 rounded" data-type="Detox">
+                <i class="fas fa-clinic-medical mr-1"></i> Detox
+            </button>
+            <button class="filter-button bg-white hover:bg-purple-50 text-gray-700 font-semibold py-2 rounded" data-type="Food">
+                <i class="fas fa-utensils mr-1"></i> Food
+            </button>
+            <button class="filter-button bg-white hover:bg-yellow-50 text-gray-700 font-semibold py-2 rounded" data-type="Shelter">
+                <i class="fas fa-home mr-1"></i> Shelter
+            </button>
+            <button class="filter-button bg-white hover:bg-red-50 text-gray-700 font-semibold py-2 rounded" data-type="Urgent">
+                <i class="fas fa-ambulance mr-1"></i> Urgent Care
+            </button>
+            <button class="filter-button bg-white hover:bg-teal-50 text-gray-700 font-semibold py-2 rounded" data-type="Washrooms">
+                <i class="fas fa-restroom mr-1"></i> Washrooms
+            </button>
+            <button class="filter-button bg-white hover:bg-pink-50 text-gray-700 font-semibold py-2 rounded" data-type="Mental Health">
+                <i class="fas fa-brain mr-1"></i> Mental Health
+            </button>
+        </div>
+
+        <!-- Search input -->
+        <div class="pt-4">
+            <input id="searchInput" type="text" placeholder="Search by name or address..."
+                   class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500">
+        </div>
+
+        <!-- Footer / extra info -->
+        <footer class="bg-gray-50 p-4 rounded-xl mt-6 border border-gray-200">
+            <p class="text-xs text-gray-500">© 2025 DTES Lifeline Map. Made with ❤️ for the community.</p>
+        </footer>
     </div>
-  </div>
-</div>
 
-<!-- Local libs (placeholders) -->
-<script src="libs/leaflet/leaflet.js"></script>
-<script src="libs/leaflet-routing-machine/leaflet-routing-machine.js"></script>
-<script src="libs/qrcode/qrcode.min.js"></script>
+    <!-- Local JS libraries -->
+    <script src="libs/leaflet/leaflet.js"></script>
+    <script src="libs/leaflet-routing-machine/leaflet-routing-machine.js"></script>
+    <script src="libs/qrcode/qrcode.min.js"></script>
 
-<script>
-/* Updated index script:
-   - expects libs in /libs/
-   - full I18N for many languages
-   - accessibility (TTS + live region)
-   - QR: uses libs/qrcode if available, otherwise Google Charts fallback (online) or link text
-*/
+    <!-- Application Script -->
+    <script>
+        let map, markers = [], userLocationMarker, userLat, userLng, routingControl;
+        let currentLanguage = 'en';
+        let dtesResources = [];
 
-/* ---------------- I18N strings (extended) ---------------- */
-const I18N = {
-  en: { title:"Vancouver DTES Lifeline Map", subtitle:"Immediate access to food, shelters, harm reduction, and hotlines.", searchPlaceholder:"Search by name, type, or service", offlineBanner:"You are offline — map tiles may be unavailable. Use list view for full access.", hotlinesTitle:"Hotlines & Support", verifiedSuffix:"verified locations", popup:{type:"Type", hours:"Hours", call:"Call", getDirections:"Get Directions", openInMaps:"Open in Maps", showQRCode:"Show QR"}, ttsLang:"en-US", youAreHere:"You are here" },
-  ar: { title:"خريطة موارد DTES - فانكوفر", subtitle:"الوصول الفوري إلى خفض الأذى والملاجئ وبنوك الطعام وخطوط الطوارئ.", searchPlaceholder:"ابحث بالاسم أو النوع أو الخدمة", offlineBanner:"أنت في وضع عدم الاتصال — قد لا تتوفر بلاطات الخريطة. استخدم عرض القائمة.", hotlinesTitle:"الخطوط الساخنة والدعم", verifiedSuffix:"مواقع تم التحقق منها", popup:{type:"النوع", hours:"الساعات", call:"اتصل", getDirections:"الاتجاهات", openInMaps:"فتح الخرائط", showQRCode:"عرض رمز QR"}, ttsLang:"ar-SA", youAreHere:"أنت هنا" },
-  zh: { title:"DTES 资源地图", subtitle:"即时获取社区资源（食物、收容所、减害服务、热线）。", searchPlaceholder:"按名称、类型或服务搜索", offlineBanner:"您处于离线状态 — 地图切片可能无法使用。", hotlinesTitle:"求助热线", verifiedSuffix:"已核实的地点", popup:{type:"类型", hours:"时间", call:"致电", getDirections:"路线", openInMaps:"在地图打开", showQRCode:"显示二维码"}, ttsLang:"zh-CN", youAreHere:"您在这里" },
-  es: { title:"Mapa DTES", subtitle:"Acceso inmediato a alimentos, refugios, reducción de daños y líneas de ayuda.", searchPlaceholder:"Buscar por nombre, tipo o servicio", offlineBanner:"Estás sin conexión.", hotlinesTitle:"Líneas de ayuda", verifiedSuffix:"ubicaciones verificadas", popup:{type:"Tipo", hours:"Horario", call:"Llamar", getDirections:"Direcciones", openInMaps:"Abrir en Maps", showQRCode:"Mostrar QR"}, ttsLang:"es-ES", youAreHere:"Usted está aquí" },
-  fr: { title:"Carte DTES", subtitle:"Acceso inmediato a la nourriture, aux refuges et aux lignes d'assistance.", searchPlaceholder:"Rechercher par nom, type ou service", offlineBanner:"Hors ligne.", hotlinesTitle:"Hotlines", verifiedSuffix:"emplacements vérifiés", popup:{type:"Type", hours:"Heures", call:"Appeler", getDirections:"Itinéraire", openInMaps:"Ouvrir Maps", showQRCode:"Code QR"}, ttsLang:"fr-FR", youAreHere:"Vous êtes ici" },
-  bn: { title:"DTES রিসোর্স মানচিত্র", subtitle:"কমিউনিটি রিসোর্স এক ক্লিকে", searchPlaceholder:"নাম, টাইপ বা সার্ভিস দিয়ে খুঁজুন", offlineBanner:"অফলাইন", hotlinesTitle:"হটলাইন", verifiedSuffix:"যাচাইকৃত স্থান", popup:{type:"ধরণ", hours:"ঘণ্টা", call:"কল", getDirections:"অবস্থা", openInMaps:"মানচিত্রে খুলুন", showQRCode:"QR কোড"}, ttsLang:"bn-BD", youAreHere:"আপনি এখানে" },
-  tl: { title:"Mapa ng DTES", subtitle:"Agad na pag-access sa pagkain, tirahan, at tulong.", searchPlaceholder:"Maghanap ayon sa pangalan, uri, o serbisyo", offlineBanner:"Naka-offline", hotlinesTitle:"Mga Hotline", verifiedSuffix:"napatunayang lokasyon", popup:{type:"Uri", hours:"Oras", call:"Tumawag", getDirections:"Direksyon", openInMaps:"Buksan sa Maps", showQRCode:"Ipakita ang QR"}, ttsLang:"tl-PH", youAreHere:"Nandito ka" },
-  fa: { title:"نقشه منابع DTES - ونکوور", subtitle:"دسترسی سریع به خدمات کاهش آسیب، پناهگاه‌ها و مراکز حمایت.", searchPlaceholder:"جستجو بر اساس نام، نوع یا سرویس", offlineBanner:"آفلاین هستید — ممکن است کاشی‌های نقشه در دسترس نباشد.", hotlinesTitle:"خطوط اضطراری", verifiedSuffix:"مکان‌های تأیید شده", popup:{type:"نوع", hours:"ساعت", call:"تماس", getDirections:"مسیرها", openInMaps:"باز کردن در نقشه", showQRCode:"نمایش QR"}, ttsLang:"fa-IR", youAreHere:"شما اینجا هستید" },
-  hi: { title:"DTES संसाधन मानचित्र", subtitle:"भोजन, आश्रय, हर्म-रिडक्शन और हॉटलाइन्स तक त्वरित पहुँच।", searchPlaceholder:"नाम, प्रकार, या सेवा से खोजें", offlineBanner:"ऑफ़लाइन हैं", hotlinesTitle:"हॉटलाइन्स", verifiedSuffix:"सत्यापित स्थान", popup:{type:"प्रकार", hours:"समय", call:"कॉल", getDirections:"दिशाएँ", openInMaps:"मैप में खोलें", showQRCode:"QR दिखाएँ"}, ttsLang:"hi-IN", youAreHere:"आप यहाँ हैं" },
-  ur: { title:"DTES وسائل کا نقشہ", subtitle:"خوراک، پناہ گاہیں، ہرم ریڈکشن اور ہاٹ لائنز تک فوری رسائی۔", searchPlaceholder:"نام، قسم یا سروس سے تلاش کریں", offlineBanner:"آف لائن ہیں", hotlinesTitle:"ہاٹ لائنز", verifiedSuffix:"تصدیق شدہ مقامات", popup:{type:"قسم", hours:"اوقات", call:"کال", getDirections:"راستہ", openInMaps:"نقشے میں کھولیں", showQRCode:"کیو آر دکھائیں"}, ttsLang:"ur-PK", youAreHere:"آپ یہاں ہیں" },
-  pa: { title:"DTES ਸਰੋਤ ਨਕਸ਼ਾ", subtitle:"ਭੋਜਨ, ਆਸ਼ਰਾ, ਅਤੇ ਸਹਾਇਤਾ ਤਕ ਤੁਰੰਤ ਪਹੁੰਚ।", searchPlaceholder:"ਨਾਂ, ਕਿਸਮ ਜਾਂ ਸਰਵਿਸ ਨਾਲ ਖੋਜ਼ੋ", offlineBanner:"ਆਫਲਾਈਨ", hotlinesTitle:"ਹਾਟਲਾਈਨ", verifiedSuffix:"ਸਰਟੀਫਾਈਡ ਥਾਵਾਂ", popup:{type:"ਕਿਸਮ", hours:"ਘੰਟੇ", call:"ਕਾਲ", getDirections:"ਦਿਸ਼ਾ", openInMaps:"ਮੈਪ ਵਿੱਚ ਖੋਲੋ", showQRCode:"QR ਦਿਖਾਓ"}, ttsLang:"pa-IN", youAreHere:"ਤੁਸੀਂ ਇੱਥੇ ਹੋ" },
-  nl: { title:"DTES Hulpmiddelen Kaart", subtitle:"Directe toegang tot voedsel, opvang en hulpdiensten.", searchPlaceholder:"Zoek op naam, type of dienst", offlineBanner:"Je bent offline", hotlinesTitle:"Hulplijnen", verifiedSuffix:"gecontroleerde locaties", popup:{type:"Type", hours:"Tijden", call:"Bellen", getDirections:"Route", openInMaps:"Open in Kaarten", showQRCode:"Toon QR"}, ttsLang:"nl-NL", youAreHere:"U bevindt zich hier" },
-  it: { title:"Mappa risorse DTES", subtitle:"Accesso immediato a cibo, rifugi e servizi.", searchPlaceholder:"Cerca per nome, tipo o servizio", offlineBanner:"Offline", hotlinesTitle:"Linee di assistenza", verifiedSuffix:"luoghi verificati", popup:{type:"Tipo", hours:"Orario", call:"Chiama", getDirections:"Indicazioni", openInMaps:"Apri in Maps", showQRCode:"Mostra QR"}, ttsLang:"it-IT", youAreHere:"Sei qui" },
-  sv: { title:"DTES Resurskarta", subtitle:"Omedelbar tillgång till mat, skydd och hjälplinjer.", searchPlaceholder:"Sök efter namn, typ eller tjänst", offlineBanner:"Offline", hotlinesTitle:"Hjälplinjer", verifiedSuffix:"verifierade platser", popup:{type:"Typ", hours:"Öppettider", call:"Ring", getDirections:"Vägbeskrivning", openInMaps:"Öppna i kartor", showQRCode:"Visa QR"}, ttsLang:"sv-SE", youAreHere:"Du är här" },
-  de: { title:"DTES Ressourcenkarte", subtitle:"Schneller Zugriff auf Essen, Unterkünfte und Hotlines.", searchPlaceholder:"Suche nach Name, Typ oder Dienst", offlineBanner:"Offline", hotlinesTitle:"Hotlines", verifiedSuffix:"verifizierte Standorte", popup:{type:"Typ", hours:"Öffnungszeiten", call:"Anrufen", getDirections:"Route", openInMaps:"In Maps öffnen", showQRCode:"QR anzeigen"}, ttsLang:"de-DE", youAreHere:"Sie sind hier" },
-  pt: { title:"Mapa de Recursos DTES", subtitle:"Acesso imediato a alimentação, abrigos e linhas de apoio.", searchPlaceholder:"Pesquisar por nome, tipo ou serviço", offlineBanner:"Offline", hotlinesTitle:"Linhas de Apoio", verifiedSuffix:"locais verificados", popup:{type:"Tipo", hours:"Horários", call:"Ligar", getDirections:"Direções", openInMaps:"Abrir no Maps", showQRCode:"Mostrar QR"}, ttsLang:"pt-PT", youAreHere:"Você está aqui" }
-};
+        // Translation strings for popup (added English fallback for Hindi/Urdu/Punjabi)
+        const translations = {
+            en: {type: "Type", hours: "Hours", call: "Call", getDirections: "Get Directions", openInMaps: "Open in Maps", showQRCode: "Show QR", locating: "Locating...", locationFound: "Location found!", enableLocationFirst: "Enable your location first", directionsTo: "Directions to", followRedLine: "Follow the red line on map"},
+            zh: {type: "类型", hours: "时间", call: "致电", getDirections: "获取路线", openInMaps: "在地图中打开", showQRCode: "显示二维码", locating: "正在定位...", locationFound: "找到位置！", enableLocationFirst: "请先启用位置", directionsTo: "前往", followRedLine: "按照地图上的红线"},
+            es: {type: "Tipo", hours: "Horario", call: "Llamar", getDirections: "Direcciones", openInMaps: "Abrir en Mapas", showQRCode: "Código QR", locating: "Localizando...", locationFound: "¡Ubicación encontrada!", enableLocationFirst: "Active su ubicación primero", directionsTo: "Direcciones a", followRedLine: "Siga la línea roja"},
+            fr: {type: "Type", hours: "Heures", call: "Appeler", getDirections: "Itinéraire", openInMaps: "Ouvrir Maps", showQRCode: "Code QR", locating: "Localisation...", locationFound: "Position trouvée!", enableLocationFirst: "Activez votre position", directionsTo: "Itinéraire vers", followRedLine: "Suivez la ligne rouge"},
+            bn: {type: "ধরন", hours: "সময়", call: "কল", getDirections: "দিকনির্দেশ", openInMaps: "মানচিত্রে খুলুন", showQRCode: "QR কোড", locating: "খুঁজছি...", locationFound: "পাওয়া গেছে!", enableLocationFirst: "প্রথমে অবস্থান সক্রিয় করুন", directionsTo: "দিকনির্দেশ", followRedLine: "লাল রেখা অনুসরণ করুন"},
+            tl: {type: "Uri", hours: "Oras", call: "Tumawag", getDirections: "Direksyon", openInMaps: "Buksan sa Maps", showQRCode: "QR Code", locating: "Hinahanap...", locationFound: "Nahanap!", enableLocationFirst: "I-enable muna", directionsTo: "Direksyon sa", followRedLine: "Sundin ang pulang linya"},
+            ar: {type: "النوع", hours: "الساعات", call: "اتصل", getDirections: "الاتجاهات", openInMaps: "فتح الخرائط", showQRCode: "رمز QR", locating: "جارٍ التحديد...", locationFound: "تم العثور!", enableLocationFirst: "قم بتفعيل الموقع أولاً", directionsTo: "اتجاهات إلى", followRedLine: "اتبع الخط الأحمر"},
+            fa: {type: "نوع", hours: "ساعات", call: "تماس", getDirections: "مسیر", openInMaps: "باز کردن نقشه", showQRCode: "کد QR", locating: "در حال یافتن...", locationFound: "یافت شد!", enableLocationFirst: "ابتدا موقعیت را فعال کنید", directionsTo: "مسیر به", followRedLine: "خط قرمز را دنبال کنید"},
+            hi: {type: "Type", hours: "Hours", call: "Call", getDirections: "Get Directions", openInMaps: "Open in Maps", showQRCode: "Show QR", locating: "Locating...", locationFound: "Location found!", enableLocationFirst: "Enable your location first", directionsTo: "Directions to", followRedLine: "Follow the red line"},
+            ur: {type: "Type", hours: "Hours", call: "Call", getDirections: "Get Directions", openInMaps: "Open in Maps", showQRCode: "Show QR", locating: "Locating...", locationFound: "Location found!", enableLocationFirst: "Enable your location first", directionsTo: "Directions to", followRedLine: "Follow the red line"},
+            pa: {type: "Type", hours: "Hours", call: "Call", getDirections: "Get Directions", openInMaps: "Open in Maps", showQRCode: "Show QR", locating: "Locating...", locationFound: "Location found!", enableLocationFirst: "Enable your location first", directionsTo: "Directions to", followRedLine: "Follow the red line"}
+        };
 
-/* ---------------- State ---------------- */
-resources = []; map = null; markers = []; userLoc = null; lastOpenPopupText = '';
+        // Create popup content for a resource
+        function createPopup(r) {
+            const colors = {
+                'Naloxone': '#3B82F6', 'Injection Site': '#10B981',
+                'Detox': '#F97316', 'Food': '#9333EA', 'Shelter': '#b45309',
+                'Urgent': '#EF4444', 'Washrooms': '#14B8A6', 'Mental Health': '#EC4899'
+            };
+            const t = translations[currentLanguage];
+            const safeName = r.name.replace(/'/g, "\\'");
 
-/* ---------------- Utilities ---------------- */
-const $ = id => document.getElementById(id);
-function safe(v){ return v===null||v===undefined?'':String(v); }
-function stripHtml(html){ const d=document.createElement('div'); d.innerHTML = html; return d.textContent||d.innerText||''; }
+            return `
+                <div style="max-width: 280px; font-family: Nunito Sans, sans-serif;">
+                    <h3 style="font-weight:bold; margin-bottom:10px; font-size:16px; color:#1F2937;">${r.name}</h3>
+                    <p style="margin-bottom:8px; font-size:13px;">
+                        <span class="status-indicator ${r.status==='open'?'status-open':'status-closed'}"></span>
+                        <strong style="color:${colors[r.type]||'#6B7280'};">${t.type}:</strong> ${r.type}
+                    </p>
+                    <p style="margin-bottom:8px; font-size:13px;">${r.description}</p>
+                    <p style="margin-bottom:8px; font-size:13px;"><strong>${t.hours}:</strong> ${r.hours}</p>
+                    <p style="margin-bottom:12px; font-size:13px;">
+                        <strong>${t.call}:</strong> 
+                        <a href="tel:${r.phone}" style="color:#2563EB; text-decoration:underline;">${r.phone}</a>
+                    </p>
+                    <p style="margin-bottom:8px; font-size:12px; color:#6B7280;">
+                        <i class="fas fa-map-marker-alt"></i> ${r.address}
+                    </p>
+                    <button onclick="openInMaps(${r.lat}, ${r.lng})" class="popup-btn bg-blue-600 text-white">
+                        <i class="fas fa-directions mr-1"></i> ${t.getDirections}
+                    </button>
+                    <button onclick="showQRCode(${r.lat}, ${r.lng}, '${safeName}')" class="popup-btn bg-green-600 text-white">
+                        <i class="fas fa-qrcode mr-1"></i> ${t.showQRCode}
+                    </button>
+                </div>
+            `;
+        }
 
-/* ---------------- Load resources JSON ---------------- */
-async function loadResources(url='dtes-resources.json'){
-  try {
-    const res = await fetch(url, {cache:'no-store'});
-    if(!res.ok) throw new Error('fetch failed '+res.status);
-    resources = await res.json();
-  } catch(e){
-    console.warn('fetch resources failed', e);
-    try {
-      const cached = await caches.match('/dtes-resources.json');
-      if(cached){
-        const txt = await cached.text();
-        resources = JSON.parse(txt);
-      } else resources = [];
-    } catch(err){ resources = []; }
-  }
-  renderHotlines();
-  renderList();
-  addMarkers();
-  updateCounts();
-}
+        // Map initialization
+        function initMap() {
+            if (typeof L === 'undefined') {
+                console.error('Leaflet not loaded!');
+                return;
+            }
+            map = L.map('map').setView([49.2819, -123.1000], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap', maxZoom: 19
+            }).addTo(map);
+            // Add markers for all resources
+            dtesResources.forEach(r => {
+                const colors = {
+                    'Naloxone': '#3B82F6', 'Injection Site': '#10B981',
+                    'Detox': '#F97316', 'Food': '#9333EA', 'Shelter': '#b45309',
+                    'Urgent': '#EF4444', 'Washrooms': '#14B8A6', 'Mental Health': '#EC4899'
+                };
+                const iconHtml = `<div style="background-color: ${colors[r.type]||'#6B7280'}; width:28px; height:28px; border-radius:50%; border:3px solid white; box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>`;
+                const icon = L.divIcon({ html: iconHtml, iconSize:[28,28], iconAnchor:[14,14] });
+                const marker = L.marker([r.lat, r.lng], { icon: icon })
+                    .addTo(map)
+                    .bindPopup(createPopup(r));
+                marker.resourceData = r;
+                markers.push(marker);
+            });
+            // Update resource count
+            document.getElementById('resourceCount').textContent = dtesResources.length + ' verified locations';
+            // Fade in content
+            setTimeout(() => {
+                document.getElementById('loadingOverlay').style.opacity = 0;
+                setTimeout(() => {
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    document.getElementById('mainAppContent').style.opacity = 1;
+                }, 500);
+            }, 800);
+        }
 
-/* ---------------- Map init & markers ---------------- */
-function initMap(){
-  if(map) return;
-  if(typeof L === 'undefined'){ $('map').innerHTML = '<div style="padding:18px;color:#7c7c7c">Map library failed to load. For offline, put Leaflet files in /libs/leaflet/</div>'; return; }
-  map = L.map('map', {preferCanvas:true}).setView([49.2819,-123.1000],14);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-}
+        // Show QR code modal
+        window.showQRCode = function(lat, lng, name) {
+            const url = `https://maps.google.com/maps?q=${lat},${lng}(${encodeURIComponent(name)})`;
+            const modal = document.getElementById('qrModal');
+            document.getElementById('qrLocationName').textContent = name;
+            const qrcodeDiv = document.getElementById('qrcode');
+            qrcodeDiv.innerHTML = '';
+            new QRCode(qrcodeDiv, { text: url, width:200, height:200, colorDark:"#000", colorLight:"#fff", correctLevel:QRCode.CorrectLevel.H });
+            modal.style.display = 'block';
+        };
+        document.querySelector('.close-modal').onclick = () => {
+            document.getElementById('qrModal').style.display = 'none';
+        };
 
-function addMarkers(){
-  if(!map) initMap();
-  markers.forEach(m=>map.removeLayer(m));
-  markers = [];
-  resources.forEach(r=>{
-    if(typeof r.lat==='number' && typeof r.lng==='number'){
-      const colorMap = {'Food':'#9333EA','Shelter':'#b45309','Detox':'#F97316','Naloxone':'#3B82F6','Hotline':'#6B7280','Washrooms':'#14B8A6','Mental Health':'#EC4899','Injection Site':'#10B981','Clothing':'#0ea5a4'};
-      const color = colorMap[r.type]||'#6B7280';
-      const icon = L.divIcon({ html:`<div style="background:${color};width:28px;height:28px;border-radius:50%;border:3px solid white"></div>`, className:'', iconSize:[28,28], iconAnchor:[14,14] });
-      const marker = L.marker([r.lat,r.lng],{icon}).addTo(map);
-      marker.resource = r;
-      marker.bindPopup(createPopup(r),{maxWidth:360});
-      marker.on('popupopen',()=> lastOpenPopupText = stripHtml(createPopup(r)));
-      markers.push(marker);
-    }
-  });
-}
+        // Open location in external Maps
+        function openInMaps(lat, lng) {
+            const url = `https://maps.google.com/maps?q=${lat},${lng}`;
+            window.open(url, '_blank');
+        }
 
-/* ---------------- Popup HTML builder ---------------- */
-function createPopup(r){
-  const lang = $('languageSelect').value || 'en';
-  const t = I18N[lang] || I18N.en;
-  const phone = r.phone?`<a href="tel:${safe(r.phone)}">${safe(r.phone)}</a>`:'N/A';
-  return `
-    <div>
-      <h3 style="margin:0 0 6px 0;font-weight:700">${safe(r.name)}</h3>
-      <div style="font-size:13px;margin-bottom:6px;"><strong>${t.popup.type}:</strong> ${safe(r.type)}</div>
-      <div style="font-size:13px;margin-bottom:6px;"><strong>${t.popup.hours}:</strong> ${safe(r.hours||'N/A')}</div>
-      <div style="font-size:13px;margin-bottom:8px;"><strong>${t.popup.call}:</strong> ${phone}</div>
-      <div style="color:#6b7280;font-size:13px;margin-bottom:8px;">${safe(r.address||'')}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="popup-btn" onclick="getDirections(${r.lat},${r.lng},'${escapeForJS(r.name)}')" style="background:#ef4444;color:#fff">${t.popup.getDirections}</button>
-        <button class="popup-btn" onclick="openInMaps(${r.lat},${r.lng},'${escapeForJS(r.name)}')" style="background:#3B82F6;color:#fff">${t.popup.openInMaps}</button>
-        <button class="popup-btn" onclick="showQR(${r.lat},${r.lng},'${escapeForJS(r.name)}')" style="background:#10B981;color:#fff">${t.popup.showQRCode}</button>
-      </div>
-    </div>
-  `;
-}
+        // Quick exit: immediately navigate to a safe site
+        document.getElementById('quickExitBtn').addEventListener('click', () => {
+            window.location.href = 'https://www.google.com';
+        });
 
-function escapeForJS(s){ return String(s||'').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
+        // Enable quick exit on Ctrl+Q for accessibility
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'q') {
+                window.location.href = 'https://www.google.com';
+            }
+        });
 
-/* ---------------- Search/Filter/List ---------------- */
-document.addEventListener('DOMContentLoaded', ()=> {
-  document.getElementById('searchBar').addEventListener('input', e=>{
-    const q = e.target.value.toLowerCase().trim();
-    markers.forEach(m=>{
-      const r = m.resource;
-      const hay = `${r.name} ${r.type} ${r.address||''} ${r.phone||''} ${r.description||''}`.toLowerCase();
-      if(q===''||hay.includes(q)) m.addTo(map); else map.removeLayer(m);
-    });
-    renderList();
-  });
+        // Language switcher
+        document.getElementById('languageSelect').addEventListener('change', function() {
+            currentLanguage = this.value;
+        });
 
-  document.getElementById('toggleListView').addEventListener('click', ()=>{
-    const lv = $('listView');
-    if(lv.style.display==='block'){ lv.style.display='none'; $('map').style.display=''; document.getElementById('toggleListView').textContent='List view'; }
-    else{ lv.style.display='block'; $('map').style.display='none'; document.getElementById('toggleListView').textContent='Map view'; }
-  });
+        // Category filter buttons
+        document.querySelectorAll('.filter-button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const type = this.getAttribute('data-type');
+                if (this.classList.contains('active')) {
+                    this.classList.remove('active');
+                    markers.forEach(m => { if (m.resourceData.type === type) m.addTo(map); });
+                } else {
+                    this.classList.add('active');
+                    markers.forEach(m => { if (m.resourceData.type === type) map.removeLayer(m); });
+                }
+            });
+        });
 
-  // filter buttons (dynamic - created if absent)
-  document.querySelectorAll('.filter-button').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.querySelectorAll('.filter-button').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      const filter = btn.dataset.filter;
-      markers.forEach(m=>{
-        if(filter==='all' || (m.resource && m.resource.type===filter)) m.addTo(map); else map.removeLayer(m);
-      });
-      updateCounts();
-    });
-  });
+        // Search by name/address
+        document.getElementById('searchInput').addEventListener('input', function() {
+            const query = this.value.toLowerCase();
+            markers.forEach(m => {
+                const r = m.resourceData;
+                if (r.name.toLowerCase().includes(query) || r.address.toLowerCase().includes(query)) {
+                    m.addTo(map);
+                } else {
+                    map.removeLayer(m);
+                }
+            });
+        });
 
-  // accessibility controls
-  document.getElementById('locateUserButton').addEventListener('click', ()=>{
-    if(!navigator.geolocation){ alert('Geolocation not supported'); return; }
-    navigator.geolocation.getCurrentPosition(pos=>{
-      userLoc = {lat:pos.coords.latitude, lng:pos.coords.longitude};
-      if(window._you) map.removeLayer(window._you);
-      window._you = L.circleMarker([userLoc.lat,userLoc.lng],{radius:8,color:'#2563EB',fillColor:'#3B82F6',fillOpacity:1}).addTo(map).bindPopup(I18N[$('languageSelect').value||'en'].youAreHere);
-      map.setView([userLoc.lat,userLoc.lng],15);
-    }, err=>{ alert('Unable to get location: '+err.message); });
-  });
+        // Geolocation (find user)
+        document.getElementById('userLocationStatus').addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert('Geolocation not supported by your browser');
+                return;
+            }
+            document.getElementById('userLocationStatus').textContent = translations[currentLanguage].locating;
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    userLat = pos.coords.latitude;
+                    userLng = pos.coords.longitude;
+                    if (userLocationMarker) map.removeLayer(userLocationMarker);
+                    userLocationMarker = L.marker([userLat, userLng], {
+                        icon: L.divIcon({ html: '<div class="user-location-icon"></div>', iconSize:[26,26], iconAnchor:[13,13] })
+                    }).addTo(map);
+                    document.getElementById('userLocationStatus').textContent = translations[currentLanguage].locationFound;
+                    // Offer directions from user location
+                    document.querySelectorAll('.direction-btn').forEach(btn => btn.style.display = 'inline-flex');
+                },
+                err => {
+                    document.getElementById('userLocationStatus').textContent = 'Unable to retrieve location';
+                    console.error(err);
+                }
+            );
+        });
 
-  document.getElementById('readPopupBtn').addEventListener('click', ()=> {
-    if(!lastOpenPopupText) { alert('Open a resource popup first'); return; }
-    speak(lastOpenPopupText);
-  });
-  document.getElementById('contrastToggle').addEventListener('click', ()=> document.body.classList.toggle('high-contrast'));
-  document.getElementById('dyslexicToggle').addEventListener('click', ()=> document.body.classList.toggle('dyslexic-font'));
-  document.getElementById('fontInc').addEventListener('click', ()=> {
-    const root = document.documentElement; const size = parseFloat(getComputedStyle(root).fontSize||16);
-    root.style.fontSize = (size+1)+'px';
-  });
-  document.getElementById('fontDec').addEventListener('click', ()=> {
-    const root = document.documentElement; const size = parseFloat(getComputedStyle(root).fontSize||16);
-    root.style.fontSize = Math.max(12,size-1)+'px';
-  });
-  document.getElementById('minimizeAccess').addEventListener('click', ()=> $('accessibilityPanel').classList.toggle('minimized'));
+        // Leaflet Routing for directions
+        function routeTo(lat, lng) {
+            if (!userLat || !userLng) {
+                alert(translations[currentLanguage].enableLocationFirst);
+                return;
+            }
+            if (routingControl) map.removeControl(routingControl);
+            routingControl = L.Routing.control({
+                waypoints: [L.latLng(userLat, userLng), L.latLng(lat, lng)],
+                show: false, routeWhileDragging: false, lineOptions: { styles: [{color: '#EF4444', weight: 5}] }
+            }).addTo(map);
+        }
 
-  document.getElementById('closeQr').addEventListener('click', ()=> $('qrModal').classList.add('hidden'));
+        // Attach routing to popup buttons (delegated)
+        map && map.on('popupopen', function(e) {
+            const btn = e.popup.getElement().querySelector('.direction-btn');
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    const r = e.popup._source.resourceData;
+                    routeTo(r.lat, r.lng);
+                });
+            }
+        });
 
-  document.getElementById('languageSelect').addEventListener('change', ()=> {
-    const lang = $('languageSelect').value || 'en';
-    if(['ar','fa','ur','he'].includes(lang)){ document.documentElement.dir='rtl'; document.body.classList.add('rtl'); } else { document.documentElement.dir='ltr'; document.body.classList.remove('rtl'); }
-    applyTranslations(lang);
-  });
-
-  // initialise: load resources and map
-  loadResources().then(()=> initMap()).then(()=> applyTranslations($('languageSelect').value||'en'));
-});
-
-/* ---------------- Directions / external maps / QR ---------------- */
-function getDirections(lat,lng,name){
-  if(!userLoc){ alert('Enable your location first'); return; }
-  try {
-    if(window.routingControl) map.removeControl(window.routingControl);
-    window.routingControl = L.Routing.control({ waypoints:[L.latLng(userLoc.lat,userLoc.lng), L.latLng(lat,lng)], lineOptions:{styles:[{color:'#ef4444',weight:5,opacity:.9}]}, createMarker: ()=>null }).addTo(map);
-  } catch(e){ console.warn('Routing not available', e); alert('Routing unavailable'); }
-}
-function openInMaps(lat,lng,name){ window.open(`https://maps.google.com/?q=${lat},${lng}(${encodeURIComponent(name)})`,'_blank'); }
-
-function showQR(lat,lng,name){
-  const url = `https://maps.google.com/?q=${lat},${lng}(${encodeURIComponent(name)})`;
-  const qEl = $('qrcode'); qEl.innerHTML = '';
-  if(window.QRCode){
-    try { new QRCode(qEl, { text:url, width:200, height:200 }); } catch(e){ qEl.textContent = url; }
-  } else {
-    // Google Charts (online) fallback
-    const gc = `https://chart.googleapis.com/chart?cht=qr&chs=200x200&chl=${encodeURIComponent(url)}`;
-    const img = document.createElement('img'); img.src = gc; img.alt = 'QR code';
-    img.onerror = ()=>{ qEl.textContent = url; };
-    qEl.appendChild(img);
-  }
-  $('qrName').textContent = name;
-  $('qrModal').classList.remove('hidden');
-}
-
-/* ---------------- TTS ---------------- */
-function speak(text){
-  if(!('speechSynthesis' in window)) return alert('TTS not supported');
-  const lang = $('languageSelect').value || 'en';
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = (I18N[lang] && I18N[lang].ttsLang) ? I18N[lang].ttsLang : 'en-US';
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utter);
-}
-
-/* ---------------- Translations apply ---------------- */
-function applyTranslations(lang){
-  if(!I18N[lang]) lang='en';
-  const t = I18N[lang];
-  $('mainTitle').textContent = t.title;
-  $('subtitle').textContent = t.subtitle;
-  $('searchBar').placeholder = t.searchPlaceholder||'';
-  $('hotlinesTitle').textContent = t.hotlinesTitle||'Hotlines & Support';
-  // update filters if present
-  document.querySelectorAll('[data-filter]').forEach(btn=>{
-    const key = btn.dataset.filter;
-    if(key==='all'){ const label = t.filters && t.filters.all ? t.filters.all : 'All'; btn.textContent = `${label} (${resources.length})`; }
-    else { const label = t.filters && t.filters[key] ? t.filters[key] : key; btn.textContent = label; }
-  });
-  // rebind popups to update text
-  markers.forEach(m => m.bindPopup(createPopup(m.resource)));
-  // offline banner
-  const offline = !navigator.onLine;
-  $('offlineBanner').style.display = offline ? 'block' : 'none';
-  if(offline) $('offlineBanner').textContent = t.offlineBanner || '';
-  updateCounts();
-}
-
-/* ---------------- Counts ---------------- */
-function updateCounts(){
-  const visible = markers.filter(m=> map && map.hasLayer(m)).length;
-  const lang = $('languageSelect').value||'en';
-  const sfx = I18N[lang] ? I18N[lang].verifiedSuffix : 'verified locations';
-  // expose a simple element to show count
-  let rc = document.getElementById('resourceCount');
-  if(!rc){ rc = document.createElement('div'); rc.id='resourceCount'; rc.style.fontWeight='700'; rc.style.marginTop='6px'; document.querySelector('header div').appendChild(rc); }
-  rc.textContent = `${visible} ${sfx}`;
-}
-
-/* ---------------- icon fallback utility (replace fa icons with inline svgs if needed) ---------------- */
-function replaceFAIcons(){
-  const map = {
-    'fa-qrcode': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="4" height="4" stroke="#374151"/><rect x="9" y="3" width="12" height="12" stroke="#374151"/><rect x="3" y="9" width="4" height="4" stroke="#374151"/></svg>'
-  };
-  document.querySelectorAll('i[class*="fa-"]').forEach(i=>{
-    const classes = Array.from(i.classList);
-    const fa = classes.find(c=>c.startsWith('fa-'));
-    if(fa && map[fa]) { const wrapper = document.createElement('span'); wrapper.innerHTML = map[fa]; i.replaceWith(wrapper); }
-  });
-}
-
-/* ---------------- final helpers ---------------- */
-function escapeHtml(s){ return String(s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-</script>
+        // Initialize after libraries and data load
+        function waitForLeaflet() {
+            if (typeof L !== 'undefined' && typeof L.Routing !== 'undefined') {
+                initMap();
+            } else {
+                setTimeout(waitForLeaflet, 100);
+            }
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                fetch('dtes-resources.json')
+                    .then(resp => resp.json())
+                    .then(data => { dtesResources = data; waitForLeaflet(); })
+                    .catch(err => console.error('Failed to load resources:', err));
+            });
+        } else {
+            fetch('dtes-resources.json')
+                .then(resp => resp.json())
+                .then(data => { dtesResources = data; waitForLeaflet(); })
+                .catch(err => console.error('Failed to load resources:', err));
+        }
+    </script>
 </body>
 </html>
