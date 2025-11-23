@@ -5,37 +5,35 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Vancouver DTES Lifeline Map</title>
 
-  <!-- Prefer local copies; fall back to CDN if missing -->
+  <!-- Prefer local copies; fallback to CDN automatically in JS below -->
   <link id="leaflet-css" rel="stylesheet" href="libs/leaflet/leaflet.css">
   <link id="lrm-css" rel="stylesheet" href="libs/leaflet-routing-machine/leaflet-routing-machine.css">
-  <link id="fa-css" rel="stylesheet" href="libs/fontawesome/css/all.min.css">
   <link id="tailwind-css" rel="stylesheet" href="css/tailwind.min.css">
 
   <style>
-    /* minimal visual reset and key UI */
-    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;color:#0f172a;background:#071014}
-    .container{max-width:1200px;margin:18px auto;padding:18px;color:#d1f5e0}
-    header h1{font-size:28px;margin:0}
-    #map{height:68vh;border-radius:12px;background:#fff;overflow:hidden}
-    .chip{display:inline-flex;align-items:center;gap:.5rem;padding:.45rem .8rem;border-radius:999px;background:transparent;border:2px solid #2ee0b6;color:#2ee0b6;cursor:pointer}
-    .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
-    #loadingOverlay{position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#c7f0e2}
-    .spinner{width:48px;height:48px;border-radius:50%;border:6px solid rgba(255,255,255,0.08);border-top-color:#2ee0b6;animation:spin 1s linear infinite;margin-bottom:12px}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:#071014;color:#d8fff0}
+    .container{max-width:1200px;margin:20px auto;padding:18px}
+    header h1{margin:0;font-size:26px}
+    #map{height:68vh;border-radius:10px;overflow:hidden;background:#fff}
+    .chip{display:inline-flex;align-items:center;gap:.5rem;padding:.45rem .7rem;border-radius:999px;border:2px solid #2ee0b6;background:transparent;color:#2ee0b6;cursor:pointer}
+    #loadingOverlay{position:fixed;inset:0;background:rgba(2,6,23,0.96);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#bfffe8}
+    .spinner{width:48px;height:48px;border-radius:50%;border:6px solid rgba(255,255,255,0.06);border-top-color:#2ee0b6;animation:spin 1s linear infinite;margin-bottom:12px}
     @keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
     #offlineBanner{display:none;background:#ffedd5;color:#7c2d12;padding:8px;border-radius:8px;margin:12px}
     .rtl{direction:rtl}
-    .popup-btn{padding:.4rem .7rem;border-radius:.5rem;font-weight:600;display:inline-flex;align-items:center;gap:.5rem;border:none;cursor:pointer}
+    .popup-btn{padding:.35rem .6rem;border-radius:.5rem;font-weight:700;border:none;background:#0b6;padding;color:#012;border-radius:6px;cursor:pointer}
+    #filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .category{padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.06);cursor:pointer}
     .hidden{display:none!important}
-    /* small responsive */
-    @media (max-width:720px){ header h1{font-size:20px} }
+    #accessPanel{position:fixed;left:16px;bottom:16px;background:rgba(0,0,0,0.6);padding:12px;border-radius:10px;z-index:1200}
+    #listView{margin-top:12px;background:rgba(255,255,255,0.02);padding:12px;border-radius:8px;max-height:36vh;overflow:auto}
   </style>
 </head>
 <body>
-
   <div id="loadingOverlay" role="status" aria-live="polite">
     <div class="spinner" aria-hidden="true"></div>
-    <div id="loadingTitle" style="font-weight:700;font-size:20px">DTES Lifeline Map</div>
-    <div id="loadingMsg" style="margin-top:8px;color:#99ead3">Loading resources...</div>
+    <div style="font-weight:700;font-size:18px">DTES Lifeline Map</div>
+    <div id="loadingMsg" style="margin-top:8px;color:#9be7d0">Loading resources...</div>
   </div>
 
   <div id="offlineBanner" role="alert" aria-live="assertive"></div>
@@ -61,32 +59,33 @@
           <option value="es">Español</option>
           <option value="fr">Français</option>
         </select>
-
         <button id="listToggle" class="chip">List view</button>
       </div>
     </header>
 
     <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <input id="searchInput" placeholder="Search by name, type, or address" style="flex:1;padding:10px;border-radius:10px;border:1px solid #184; background:transparent;color:#dff;" />
+      <input id="searchInput" placeholder="Search by name, type, or address" style="flex:1;padding:10px;border-radius:10px;border:1px solid #184;background:transparent;color:#dff" />
       <button id="locateBtn" class="chip">Find me</button>
       <button id="emergencyBtn" class="chip" style="border-color:#ff6b6b;color:#ff6b6b">911</button>
     </div>
 
+    <div id="filters" aria-label="Category filters"></div>
+
     <div id="map" style="margin-top:12px"></div>
 
-    <div id="listView" class="hidden" style="margin-top:12px;background:rgba(255,255,255,0.03);padding:12px;border-radius:8px;max-height:36vh;overflow:auto"></div>
+    <div id="listView" class="hidden"></div>
 
     <section style="margin-top:14px">
       <h3 style="margin:0 0 8px 0">Hotlines & Support</h3>
       <div id="hotlines" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px"></div>
     </section>
 
-    <footer style="margin-top:18px;color:#8fd9c4;font-size:12px">Made for the DTES community — verify hours by calling first.</footer>
+    <footer style="margin-top:12px;color:#8fd9c4;font-size:12px">Made for the DTES community — verify hours by calling first.</footer>
   </div>
 
   <!-- QR modal -->
   <div id="qrModal" class="hidden" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:4000">
-    <div style="background:#011; padding:16px;border-radius:10px; width:320px; color:#dff;">
+    <div style="background:#011;padding:16px;border-radius:10px;width:320px;color:#dff">
       <button id="closeQR" style="float:right;background:none;border:none;color:#dff;font-size:18px">×</button>
       <h3 id="qrTitle" style="margin-top:0">Location QR</h3>
       <div id="qrcode" style="text-align:center;margin:6px auto"></div>
@@ -94,34 +93,38 @@
     </div>
   </div>
 
-  <!-- Libraries: attempt to load local libs; fallback to CDN if not present -->
+  <!-- Accessibility panel -->
+  <div id="accessPanel" role="region" aria-label="Accessibility controls">
+    <div style="display:flex;align-items:center;gap:8px">
+      <strong>Accessibility</strong>
+      <button id="minAccess" class="chip" title="Minimize">—</button>
+    </div>
+    <div id="accessControls" style="margin-top:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="contrastToggle" class="chip">High contrast</button>
+        <button id="dyslexicToggle" class="chip">Dyslexic font</button>
+        <button id="readPopupBtn" class="chip">Read popup</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="fontDec" class="chip">A-</button>
+        <button id="fontInc" class="chip">A+</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load JS libs dynamically with fallback -->
   <script>
-    // helper to check if a file exists at a relative path (via fetch HEAD)
     async function fileExists(path){
-      try{
-        const r = await fetch(path, { method: 'HEAD', cache: 'no-store' });
-        return r.ok;
-      }catch(e){ return false; }
+      try{ const r = await fetch(path, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch(e){ return false; }
     }
 
-    // load fallback CSS/JS if local file missing
     (async function ensureLibs(){
       // CSS fallbacks
-      if(!(await fileExists('libs/leaflet/leaflet.css'))){
-        document.getElementById('leaflet-css').href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      }
-      if(!(await fileExists('libs/leaflet-routing-machine/leaflet-routing-machine.css'))){
-        document.getElementById('lrm-css').href = 'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css';
-      }
-      if(!(await fileExists('css/tailwind.min.css'))){
-        document.getElementById('tailwind-css').href = 'https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css';
-      }
-      if(!(await fileExists('libs/fontawesome/css/all.min.css'))){
-        // small fallback: use CDN for icons (if desired)
-        document.getElementById('fa-css').href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
-      }
+      if(!(await fileExists('libs/leaflet/leaflet.css'))) document.getElementById('leaflet-css').href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      if(!(await fileExists('libs/leaflet-routing-machine/leaflet-routing-machine.css'))) document.getElementById('lrm-css').href = 'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css';
+      if(!(await fileExists('css/tailwind.min.css'))) document.getElementById('tailwind-css').href = 'https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css';
 
-      // load JS libs dynamically (prefer local)
+      // JS libs: try local then CDN
       const libs = [
         { local: 'libs/leaflet/leaflet.js', cdn: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' },
         { local: 'libs/leaflet-routing-machine/leaflet-routing-machine.min.js', cdn: 'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js' },
@@ -134,290 +137,336 @@
           s.src = ok ? lib.local : lib.cdn;
           s.defer = true;
           s.onload = () => resolve();
-          s.onerror = () => {
-            console.warn('Failed to load', s.src);
-            resolve();
-          };
+          s.onerror = () => { console.warn('Failed to load', s.src); resolve(); };
           document.head.appendChild(s);
         });
       }
     })();
   </script>
 
-  <!-- App script -->
+  <!-- App script: loader, map init, filters, routing, translations -->
   <script>
-  /* Robust loader + init + UI binding */
-
-  // Hide loading overlay safely
-  function hideLoading(msg){
-    try{
+    // Utility: hide overlay and show app
+    function hideOverlay(msg){
       const overlay = document.getElementById('loadingOverlay');
-      if(overlay){
-        overlay.style.transition = 'opacity .4s';
-        overlay.style.opacity = '0';
-        setTimeout(()=> overlay.remove(), 450);
-      }
-      const app = document.getElementById('app');
-      if(app) { app.style.visibility = 'visible'; }
-      if(msg && document.getElementById('offlineBanner')){
-        document.getElementById('offlineBanner').style.display = 'block';
-        document.getElementById('offlineBanner').textContent = msg;
-      }
-    }catch(e){ console.warn(e) }
-  }
+      if(overlay){ overlay.style.transition='opacity .3s'; overlay.style.opacity='0'; setTimeout(()=> overlay.remove(),350); }
+      if(msg){ const b = document.getElementById('offlineBanner'); b.style.display='block'; b.textContent = msg; }
+      document.getElementById('app').style.visibility = 'visible';
+    }
 
-  // load resources with timeout, cache fallback, embedded fallback
-  async function loadResources(url='dtes-resources.json', timeoutMs=7000){
-    const showOffline = (m)=> {
-      const b = document.getElementById('offlineBanner'); if(b){ b.style.display='block'; b.textContent = m; }
+    // Load resources robustly
+    async function loadResources(url='dtes-resources.json', timeoutMs=7000){
+      const show = (m)=>{ const x=document.getElementById('offlineBanner'); x.style.display='block'; x.textContent = m; };
+      function fetchTimeout(resource){
+        return new Promise((resolve,reject)=>{
+          const t = setTimeout(()=> reject(new Error('timeout')), timeoutMs);
+          fetch(resource, {cache:'no-store'}).then(r=>{ clearTimeout(t); resolve(r); }).catch(err=>{ clearTimeout(t); reject(err); });
+        });
+      }
+      try{
+        const r = await fetchTimeout(url);
+        if(!r.ok) throw new Error('network ' + r.status);
+        const data = await r.json();
+        console.info('Loaded resources (network):', data.length);
+        return data;
+      }catch(e){
+        console.warn('Network failed', e); show('Network error — trying cached resources');
+      }
+      // try cache
+      try{
+        if('caches' in window){
+          const match = await caches.match(url);
+          if(match){ const data = await match.json(); console.info('Loaded from cache', data.length); return data; }
+        }
+      }catch(e){ console.warn('cache failed', e); }
+      // fallback embedded if set
+      if(window._embeddedResources && Array.isArray(window._embeddedResources) && window._embeddedResources.length){
+        console.info('Loaded embedded fallback', window._embeddedResources.length);
+        return window._embeddedResources;
+      }
+      show('Unable to load resources. Limited UI available.');
+      return [];
+    }
+
+    // Translations for UI strings
+    const UI_STRINGS = {
+      en:{list:'List view', find:'Find me', emergency:'911', search:'Search by name, type, or address', you:'You are here', offline:'You are offline'},
+      ar:{list:'عرض القائمة', find:'موقعي', emergency:'٩١١', search:'ابحث باسم أو نوع أو عنوان', you:'أنت هنا', offline:'أنت غير متصل'},
+      bn:{list:'তালিকা', find:'আমাকে খুঁজুন', emergency:'৯১১', search:'নাম, প্রকার, বা ঠিকানায় খুঁজুন', you:'আপনি এখানে', offline:'অফলাইন'},
+      tl:{list:'Listahan', find:'Hanapin ako', emergency:'911', search:'Maghanap ayon sa pangalan, uri, o address', you:'Nandito ka', offline:'Offline'},
+      pa:{list:'ਲਿਸਟ ਵੇਖੋ', find:'ਮੇਰੀ ਲੋਕੇਟ', emergency:'911', search:'ਨਾਂ, ਕਿਸਮ ਜਾਂ ਪਤਾ ਲੱਭੋ', you:'ਤੁਸੀਂ ਇੱਥੇ ਹੋ', offline:'ਆਫਲਾਈਨ'},
+      fa:{list:'مشاهده', find:'مکان من', emergency:'۹۱۱', search:'جستجو بر اساس نام، نوع یا آدرس', you:'شما اینجا هستید', offline:'آفلاین'},
+      hi:{list:'सूची देखें', find:'मुझे खोजें', emergency:'911', search:'नाम, प्रकार, या पता खोजें', you:'आप यहाँ हैं', offline:'ऑफ़लाइन'},
+      ur:{list:'فہرست دیکھیں', find:'مجھے تلاش کریں', emergency:'911', search:'نام، قسم، یا پتہ تلاش کریں', you:'آپ یہاں ہیں', offline:'آف لائن'},
+      zh:{list:'列表', find:'定位我', emergency:'911', search:'按名称、类型或地址搜索', you:'您在这里', offline:'离线'},
+      es:{list:'Ver lista', find:'Encuéntrame', emergency:'911', search:'Buscar por nombre, tipo o dirección', you:'Estás aquí', offline:'Sin conexión'},
+      fr:{list:'Voir la liste', find:'Me localiser', emergency:'911', search:'Rechercher par nom, type ou adresse', you:'Vous êtes ici', offline:'Hors ligne'}
     };
 
-    function fetchTimeout(resource){
-      return new Promise((resolve,reject)=>{
-        const timer = setTimeout(()=> reject(new Error('timeout')), timeoutMs);
-        fetch(resource, {cache:'no-store'}).then(r => { clearTimeout(timer); resolve(r); }).catch(err => { clearTimeout(timer); reject(err); });
-      });
-    }
+    let map, routingControl=null, markers=[], resourcesGlobal = [], currentLang='en', userLocation=null;
 
-    // 1) network
-    try{
-      const r = await fetchTimeout(url);
-      if(!r.ok) throw new Error('network response ' + r.status);
-      const data = await r.json();
-      console.info('resources: loaded network', data.length || 0);
-      return data;
-    }catch(err){
-      console.warn('network load failed', err);
-      showOffline('Network error — attempting cached resources');
-    }
-
-    // 2) caches
-    try{
-      if('caches' in window){
-        const matched = await caches.match(url);
-        if(matched){
-          const data = await matched.json();
-          console.info('resources: loaded from cache', (data && data.length) || 0);
-          return data;
-        }
+    // Create popup HTML using resource (uses translations if present)
+    function popupHtml(res){
+      const lang = currentLang || 'en';
+      let title = res.name || '';
+      let desc = res.description || '';
+      let hours = res.hours || '';
+      // use per-resource translations if available
+      if(res.translations && res.translations[lang]){
+        const t = res.translations[lang];
+        if(t.name) title = t.name;
+        if(t.description) desc = t.description;
+        if(t.hours) hours = t.hours;
       }
-    }catch(e){ console.warn('cache load failed', e) }
-
-    // 3) embedded fallback
-    if(window._embeddedResources && Array.isArray(window._embeddedResources) && window._embeddedResources.length){
-      console.info('resources: loaded embedded fallback', window._embeddedResources.length);
-      return window._embeddedResources;
-    }
-
-    // final: empty
-    showOffline('Unable to load resource file. Showing limited UI.');
-    return [];
-  }
-
-  // translations and UI strings
-  const LANG = {
-    en: { listView:'List view', findMe:'Find me', emergency:'911', searchPlaceholder:'Search by name, type, or address', youAreHere:'You are here' },
-    ar: { listView:'عرض القائمة', findMe:'موقعى', emergency:'٩١١', searchPlaceholder:'ابحث باسم أو نوع أو عنوان', youAreHere:'أنت هنا' },
-    bn: { listView:'তালিকা', findMe:'আমাকে খুঁজুন', emergency:'৯১১', searchPlaceholder:'নাম, প্রকার, বা ঠিকানায় খুঁজুন', youAreHere:'আপনি এখানে' },
-    tl: { listView:'Listahan', findMe:'Hanapin ako', emergency:'911', searchPlaceholder:'Maghanap ayon sa pangalan, uri, o address', youAreHere:'Nandito ka' },
-    pa: { listView:'ਲਿਸਟ ਵੇਖੋ', findMe:'ਮੇਰੀ ਲੋਕੇਟ', emergency:'911', searchPlaceholder:'ਨਾਮ, ਕਿਸਮ ਜਾਂ ਪਤਾ ਲੱਭੋ', youAreHere:'ਤੁਸੀਂ ਇੱਥੇ ਹੋ' },
-    fa: { listView:'مشاهده', findMe:'مکان من', emergency:'۹۱۱', searchPlaceholder:'جستجو بر اساس نام، نوع یا آدرس', youAreHere:'شما اینجا هستید' },
-    hi: { listView:'सूची देखें', findMe:'मुझे खोजें', emergency:'911', searchPlaceholder:'नाम, प्रकार, या पता खोजें', youAreHere:'आप यहाँ हैं' },
-    ur: { listView:'فہرست دیکھیں', findMe:'مجھے تلاش کریں', emergency:'911', searchPlaceholder:'نام، قسم، یا پتہ تلاش کریں', youAreHere:'آپ یہاں ہیں' },
-    zh: { listView:'列表', findMe:'定位我', emergency:'911', searchPlaceholder:'按名称、类型或地址搜索', youAreHere:'您在这里' },
-    es: { listView:'Ver lista', findMe:'Encuéntrame', emergency:'911', searchPlaceholder:'Buscar por nombre, tipo o dirección', youAreHere:'Estás aquí' },
-    fr: { listView:'Voir la liste', findMe:'Me localiser', emergency:'911', searchPlaceholder:'Rechercher par nom, type ou adresse', youAreHere:'Vous êtes ici' }
-  };
-
-  // app state
-  let map, markers = [], resourcesGlobal = [], currentLang = 'en';
-
-  // create popup html from resource
-  function popupHtml(r){
-    const t = LANG[currentLang] || LANG.en;
-    const phone = r.phone ? `<a href="tel:${r.phone}" style="color:#2ee0b6">${r.phone}</a>` : 'N/A';
-    const safe = (r.name||'').replace(/'/g,"\\'");
-    return `
-      <div style="max-width:300px">
-        <strong style="font-size:15px">${r.name||''}</strong>
-        <div style="font-size:13px;margin-top:6px"><strong>Type:</strong> ${r.type||''}</div>
-        <div style="font-size:13px"><strong>Hours:</strong> ${r.hours||'N/A'}</div>
-        <div style="font-size:13px"><strong>Phone:</strong> ${phone}</div>
-        <div style="font-size:12px;color:#90e4cd;margin-top:8px">${r.address||''}</div>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-          <button class="popup-btn" onclick="openMaps(${r.lat},${r.lng},'${safe}')">${t.findMe}</button>
-          <button class="popup-btn" onclick="showQR(${r.lat},${r.lng},'${safe}')">QR</button>
+      const phoneHtml = res.phone ? `<a href="tel:${res.phone}" style="color:#2ee0b6">${res.phone}</a>` : 'N/A';
+      const safe = (title||'').replace(/'/g,"\\'");
+      return `
+        <div style="max-width:320px">
+          <strong style="font-size:15px">${title}</strong>
+          <div style="font-size:13px;margin-top:6px"><strong>Type:</strong> ${res.type || ''}</div>
+          <div style="font-size:13px"><strong>Hours:</strong> ${hours || 'N/A'}</div>
+          <div style="font-size:13px"><strong>Phone:</strong> ${phoneHtml}</div>
+          <div style="font-size:12px;color:#9be7d0;margin-top:6px">${res.address || ''}</div>
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+            <button class="popup-btn" onclick="routeTo(${res.lat},${res.lng},'${safe}')">Get directions</button>
+            <button class="popup-btn" onclick="showQR(${res.lat},${res.lng},'${safe}')">QR</button>
+          </div>
         </div>
-      </div>`;
-  }
+      `;
+    }
 
-  function openMaps(lat,lng,name){ window.open(`https://maps.google.com/?q=${lat},${lng}(${encodeURIComponent(name)})`,'_blank'); }
-  function showQR(lat,lng,name){
-    const url = `https://maps.google.com/?q=${lat},${lng}(${encodeURIComponent(name)})`;
-    const qEl = document.getElementById('qrcode');
-    qEl.innerHTML = '';
-    if(window.QRCode){ try { new QRCode(qEl, { text:url, width:200, height:200 }); } catch(e){ qEl.textContent = url; } }
-    else qEl.innerHTML = `<a href="${url}" target="_blank">${url}</a>`;
-    document.getElementById('qrLabel').textContent = name || '';
-    document.getElementById('qrModal').classList.remove('hidden');
-  }
-  document.getElementById('closeQR').addEventListener('click', ()=> {
-    const m = document.getElementById('qrModal'); m.classList.add('hidden'); m.style.display='none';
-  });
+    function showQR(lat,lng,name){
+      const url = `https://maps.google.com/?q=${lat},${lng}(${encodeURIComponent(name)})`;
+      const qEl = document.getElementById('qrcode'); qEl.innerHTML='';
+      if(window.QRCode){ try { new QRCode(qEl, { text:url, width:200, height:200 }); } catch(e){ qEl.textContent = url; } }
+      else qEl.innerHTML = `<a href="${url}" target="_blank">${url}</a>`;
+      document.getElementById('qrLabel').textContent = name || '';
+      document.getElementById('qrModal').classList.remove('hidden'); document.getElementById('qrModal').style.display='flex';
+    }
+    document.getElementById('closeQR').addEventListener('click', ()=> { const m=document.getElementById('qrModal'); m.classList.add('hidden'); m.style.display='none'; });
 
-  function createMarker(r){
-    if(!r || typeof r.lat !== 'number' || typeof r.lng !== 'number') return null;
-    const colorMap = {'Food':'#9333EA','Shelter':'#b45309','Detox':'#F97316','Naloxone':'#3B82F6','Hotline':'#6B7280','Washrooms':'#14B8A6','Mental Health':'#EC4899','Injection Site':'#10B981','Harm Reduction':'#06b6d4','Clothing':'#0ea5a4','Urgent':'#EF4444'};
-    const color = colorMap[r.type] || '#6B7280';
-    const div = L.divIcon({ html:`<div style="width:28px;height:28px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,0.25)"></div>`, iconSize:[28,28], iconAnchor:[14,14] });
-    const m = L.marker([r.lat, r.lng], { icon: div });
-    m.bindPopup(popupHtml(r));
-    return m;
-  }
+    function createMarker(r){
+      if(!r || typeof r.lat !== 'number' || typeof r.lng !== 'number') return null;
+      const colorMap = {'Food':'#9333EA','Shelter':'#b45309','Injection Site':'#10B981','Harm Reduction':'#06b6d4','Naloxone':'#3B82F6','Washrooms':'#14B8A6','Clothing':'#0ea5a4','Urgent':'#ef4444','Mental Health':'#EC4899','Hotline':'#6B7280','Outreach':'#F59E0B','Support':'#F97316','Drop-in':'#8B5CF6','Medical':'#0ea5a4','Other':'#6B7280'};
+      const color = colorMap[r.type] || '#6B7280';
+      const icon = L.divIcon({ html:`<div style="width:28px;height:28px;border-radius:50%;background:${color};border:3px solid #fff"></div>`, iconSize:[28,28], iconAnchor:[14,14] });
+      const m = L.marker([r.lat,r.lng], { icon });
+      m.bindPopup(popupHtml(r), { maxWidth: 320 });
+      m.resource = r;
+      return m;
+    }
 
-  function renderMarkers(list){
-    // clear existing
-    markers.forEach(m => map.removeLayer(m));
-    markers = [];
-    list.forEach(r => {
-      const m = createMarker(r);
-      if(m){ m.addTo(map); markers.push(m); m.resource = r; }
-    });
-  }
-
-  function renderList(list){
-    const lv = document.getElementById('listView');
-    lv.innerHTML = '';
-    if(!list.length) { lv.innerHTML = '<div style="color:#9be7d0">No results</div>'; return; }
-    list.forEach(r=>{
-      const el = document.createElement('div');
-      el.style.padding='8px'; el.style.borderBottom='1px dashed rgba(255,255,255,0.04)';
-      el.innerHTML = `<strong>${r.name}</strong><div style="font-size:13px;color:#9be7d0">${r.type} · ${r.hours || ''}</div><div style="margin-top:6px"><button class="chip" data-lat="${r.lat}" data-lng="${r.lng}">Show on map</button></div>`;
-      lv.appendChild(el);
-    });
-    // attach show on map handlers
-    lv.querySelectorAll('.chip').forEach(btn=>{
-      btn.addEventListener('click', (e)=>{
-        const lat = parseFloat(btn.dataset.lat), lng = parseFloat(btn.dataset.lng);
-        map.setView([lat,lng],16);
+    function renderMarkers(list){
+      markers.forEach(m=>{ try{ map.removeLayer(m); }catch(e){} });
+      markers = [];
+      list.forEach(r => {
+        const m = createMarker(r);
+        if(m){ m.addTo(map); markers.push(m); }
       });
-    });
-  }
-
-  function renderHotlines(list){
-    const grid = document.getElementById('hotlines');
-    grid.innerHTML = '';
-    const hot = list.filter(r => (r.type || '').toLowerCase().includes('hotline') || (r.type||'').toLowerCase().includes('hotline') || (r.type||'').toLowerCase()==='hotline');
-    // also include items that we tag as 'Hotline' explicitly
-    const items = list.filter(r => r.type === 'Hotline' || r.type==='Hotline/Support' || r.type==='Hotline');
-    // unify both
-    const combined = Array.from(new Set([...hot, ...items, ...list.filter(r => r.hotline === true)]));
-    // fallback: if none found, show key numbers from built-in list
-    const final = combined.length ? combined : [
-      { name: "BC 211 (Info & referrals)", phone: "211", description: "Information & referrals across BC", address: "" },
-      { name: "Crisis Centre Vancouver", phone: "604-872-3311", description: "Crisis & suicide prevention (24/7)" },
-      { name: "KUU-US Crisis Line (Indigenous)", phone: "1-800-588-8717", description: "24/7 Indigenous helpline" }
-    ];
-    final.forEach(h => {
-      const div = document.createElement('div');
-      div.style.padding='10px'; div.style.borderRadius='8px'; div.style.background='rgba(255,255,255,0.02)';
-      div.innerHTML = `<strong>${h.name}</strong><div style="font-size:13px;color:#9be7d0">${h.description || ''}</div><div style="margin-top:8px"><a href="tel:${h.phone}" class="chip">${h.phone}</a></div>`;
-      grid.appendChild(div);
-    });
-  }
-
-  // Wait until Leaflet is loaded (with timeout) then initialize map and render
-  async function waitForLeafletAndStart(resources){
-    const maxMs = 5000; const interval = 100; let waited=0;
-    while(typeof L === 'undefined' && waited < maxMs){ await new Promise(r=>setTimeout(r,interval)); waited += interval; }
-    // If still missing - show fallback message but allow UI to continue
-    if(typeof L === 'undefined'){
-      console.error('Leaflet not loaded; map will not show.');
-      document.getElementById('loadingMsg').textContent = 'Map libraries missing; check console.';
-      hideLoading('Map libraries missing; some features may be disabled.');
-      return;
     }
-    // init map
-    map = L.map('map').setView([49.2819,-123.1000],14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'© OpenStreetMap contributors'}).addTo(map);
 
-    // store global resources
-    resourcesGlobal = resources || [];
-    // render UI components
-    renderMarkers(resourcesGlobal);
-    renderList(resourcesGlobal);
-    renderHotlines(resourcesGlobal);
-
-    // always hide overlay once rendering attempted
-    hideLoading();
-  }
-
-  // language change handler: updates placeholders and UI strings, re-renders popups to update texts
-  function applyLanguage(lang){
-    currentLang = lang;
-    currentLang = (LANG[lang] ? lang : 'en');
-    const s = LANG[currentLang] || LANG.en;
-    document.getElementById('listToggle').textContent = s.listView;
-    document.getElementById('locateBtn').textContent = s.findMe;
-    document.getElementById('emergencyBtn').textContent = s.emergency;
-    document.getElementById('searchInput').placeholder = s.searchPlaceholder;
-    // direction: set RTL for Arabic and Farsi, Urdu
-    if(['ar','fa','ur'].includes(lang)) document.documentElement.classList.add('rtl'); else document.documentElement.classList.remove('rtl');
-    // re-bind all popups to update text
-    markers.forEach(m => {
-      if(m && m.resource) m.setPopupContent(popupHtml(m.resource));
-    });
-  }
-
-  // hook up language selector
-  document.getElementById('languageSelect').addEventListener('change', (e)=> applyLanguage(e.target.value));
-
-  // toggle list view
-  document.getElementById('listToggle').addEventListener('click', ()=>{
-    const lv = document.getElementById('listView'); lv.classList.toggle('hidden');
-  });
-
-  // search input filtering
-  document.getElementById('searchInput').addEventListener('input', (e)=>{
-    const q = (e.target.value||'').toLowerCase().trim();
-    const filtered = resourcesGlobal.filter(r => {
-      const hay = `${r.name||''} ${r.type||''} ${r.address||''} ${r.phone||''}`.toLowerCase();
-      return q === '' || hay.includes(q);
-    });
-    renderMarkers(filtered);
-    renderList(filtered);
-  });
-
-  // locate user
-  document.getElementById('locateBtn').addEventListener('click', ()=> {
-    if(!navigator.geolocation) { alert('Geolocation not supported'); return; }
-    navigator.geolocation.getCurrentPosition(pos=>{
-      const lat = pos.coords.latitude, lng = pos.coords.longitude;
-      if(window._you) map.removeLayer(window._you);
-      window._you = L.circleMarker([lat,lng],{radius:8,color:'#2ee0b6',fillColor:'#2ee0b6',fillOpacity:1}).addTo(map).bindPopup(LANG[currentLang].youAreHere).openPopup();
-      map.setView([lat,lng],15);
-    }, err => alert('Unable to get location: ' + (err.message||err.code)));
-  });
-
-  // init flow
-  (async function start(){
-    try{
-      const resources = await loadResources('dtes-resources.json', 7000);
-      // store embedded fallback so loadResources can use it next time if fetch fails
-      window._embeddedResources = resources.slice(0,5); // keep a small embedded cache
-      await waitForLeafletAndStart(resources);
-      // Ensure language UI initial
-      applyLanguage(document.getElementById('languageSelect').value || 'en');
-    }catch(e){
-      console.error('Startup error', e);
-      hideLoading('Startup error — check console');
+    function renderList(list){
+      const lv = document.getElementById('listView'); lv.innerHTML = '';
+      if(!list.length) { lv.innerHTML = '<div style="color:#9be7d0">No results</div>'; return; }
+      list.forEach(r => {
+        const item = document.createElement('div');
+        item.style.padding='8px'; item.style.borderBottom='1px dashed rgba(255,255,255,0.04)';
+        item.innerHTML = `<strong>${r.name}</strong><div style="font-size:13px;color:#9be7d0">${r.type} · ${r.hours||''}</div><div style="margin-top:6px"><button class="chip btn-show" data-lat="${r.lat}" data-lng="${r.lng}">Show on map</button></div>`;
+        lv.appendChild(item);
+      });
+      lv.querySelectorAll('.btn-show').forEach(b => {
+        b.addEventListener('click', () => {
+          const lat = parseFloat(b.dataset.lat), lng = parseFloat(b.dataset.lng);
+          map.setView([lat,lng],16);
+        });
+      });
     }
-  })();
 
-  // register basic SW (no fatal errors if fails)
-  if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('/sw.js').catch(e => console.warn('SW register failed', e));
-  }
+    function renderHotlines(list){
+      const hotEl = document.getElementById('hotlines'); hotEl.innerHTML = '';
+      const hotlist = list.filter(r => r.type && r.type.toLowerCase().includes('hotline'));
+      const final = hotlist.length ? hotlist : [
+        { name:"BC 211", phone:"211", description:"Information & referrals across BC" },
+        { name:"Crisis Centre Vancouver", phone:"604-872-3311", description:"24/7 crisis support" }
+      ];
+      final.forEach(h => {
+        // show translated if translations exist
+        let displayName = h.name, displayDesc = h.description;
+        if(h.translations && h.translations[currentLang]){
+          const t = h.translations[currentLang];
+          if(t.name) displayName = t.name;
+          if(t.description) displayDesc = t.description;
+        }
+        const d = document.createElement('div');
+        d.style.padding='10px'; d.style.borderRadius='8px'; d.style.background='rgba(255,255,255,0.02)';
+        d.innerHTML = `<strong>${displayName}</strong><div style="font-size:13px;color:#9be7d0">${displayDesc}</div><div style="margin-top:8px"><a class="chip" href="tel:${h.phone}">${h.phone}</a></div>`;
+        hotEl.appendChild(d);
+      });
+    }
+
+    // Routing: route from userLocation to lat,lng
+    function routeTo(lat,lng,name){
+      if(!window.L || !L.Routing){ alert('Routing library not loaded'); return; }
+      if(!userLocation){ alert('Please use "Find me" first so we can route from your location.'); return; }
+      // remove existing control
+      if(routingControl){ try{ map.removeControl(routingControl); }catch(e){} routingControl = null; }
+      routingControl = L.Routing.control({
+        waypoints: [ L.latLng(userLocation.lat, userLocation.lng), L.latLng(lat, lng) ],
+        routeWhileDragging: false,
+        showAlternatives: false,
+        lineOptions: { styles: [{color: '#2ee0b6', opacity: 0.9, weight: 6}] },
+        createMarker: function() { return null; } // keep default markers off (we already have markers)
+      }).addTo(map);
+      // zoom to fit route after a short wait
+      routingControl.on('routesfound', function(e){ const route = e.routes[0]; const bounds = route.bounds; map.fitBounds(bounds, {padding:[50,50]}); });
+    }
+
+    // Apply language across UI and re-render popups/hotlines
+    function applyLanguage(lang){
+      currentLang = lang in UI_STRINGS ? lang : 'en';
+      const s = UI_STRINGS[currentLang] || UI_STRINGS.en;
+      document.getElementById('listToggle').textContent = s.list;
+      document.getElementById('locateBtn').textContent = s.find;
+      document.getElementById('emergencyBtn').textContent = s.emergency;
+      document.getElementById('searchInput').placeholder = s.search;
+      // direction RTL for arabic, farsi, urdu
+      if(['ar','fa','ur'].includes(currentLang)) document.documentElement.classList.add('rtl'); else document.documentElement.classList.remove('rtl');
+      // rebind popups content
+      markers.forEach(m => { try{ m.setPopupContent(popupHtml(m.resource)); }catch(e){} });
+      renderHotlines(resourcesGlobal);
+    }
+
+    // Build category controls from resource types
+    function buildFilters(resources){
+      const set = new Set(resources.map(r => r.type || 'Other'));
+      const filters = document.getElementById('filters');
+      filters.innerHTML = '';
+      Array.from(set).sort().forEach(cat => {
+        const btn = document.createElement('button');
+        btn.className = 'category';
+        btn.textContent = cat;
+        btn.dataset.cat = cat;
+        btn.dataset.active = '1';
+        btn.addEventListener('click', ()=> {
+          btn.dataset.active = btn.dataset.active === '1' ? '0' : '1';
+          btn.style.opacity = btn.dataset.active === '1' ? '1' : '0.45';
+          applyFilters();
+        });
+        filters.appendChild(btn);
+      });
+      // add a clear filters button
+      const clear = document.createElement('button'); clear.className='category'; clear.textContent='Clear filters';
+      clear.addEventListener('click', ()=> {
+        filters.querySelectorAll('button.category').forEach(b => { b.dataset.active='1'; b.style.opacity='1'; });
+        applyFilters();
+      });
+      filters.appendChild(clear);
+    }
+
+    function applyFilters(){
+      const activeCats = Array.from(document.querySelectorAll('#filters button.category')).filter(b=>b.dataset.active==='1').map(b=>b.dataset.cat);
+      const q = (document.getElementById('searchInput').value||'').toLowerCase().trim();
+      const filtered = resourcesGlobal.filter(r => {
+        const inCat = activeCats.includes(r.type || 'Other');
+        const hay = `${r.name||''} ${r.type||''} ${r.address||''} ${r.phone||''}`.toLowerCase();
+        const matchesQuery = q === '' || hay.includes(q);
+        return inCat && matchesQuery;
+      });
+      renderMarkers(filtered);
+      renderList(filtered);
+    }
+
+    // Find me + route initialization
+    document.getElementById('locateBtn').addEventListener('click', ()=> {
+      if(!navigator.geolocation) return alert('Geolocation not supported');
+      document.getElementById('locateBtn').textContent = 'Locating...';
+      navigator.geolocation.getCurrentPosition(pos => {
+        userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        // add a user marker
+        if(window._youMarker) try{ map.removeLayer(window._youMarker); }catch(e){}
+        window._youMarker = L.circleMarker([userLocation.lat,userLocation.lng], { radius:8, color:'#2ee0b6', fillColor:'#2ee0b6', fillOpacity:1 }).addTo(map).bindPopup(UI_STRINGS[currentLang].you || 'You are here').openPopup();
+        map.setView([userLocation.lat,userLocation.lng],15);
+        document.getElementById('locateBtn').textContent = UI_STRINGS[currentLang].find || 'Find me';
+      }, err => {
+        alert('Unable to get location: ' + (err.message || err.code));
+        document.getElementById('locateBtn').textContent = UI_STRINGS[currentLang].find || 'Find me';
+      }, { enableHighAccuracy:true, timeout:10000 });
+    });
+
+    // Search input reacts
+    document.getElementById('searchInput').addEventListener('input', applyFilters);
+
+    // list toggle
+    document.getElementById('listToggle').addEventListener('click', ()=> {
+      document.getElementById('listView').classList.toggle('hidden');
+    });
+
+    // accessibility toggles
+    document.getElementById('contrastToggle').addEventListener('click', ()=> document.documentElement.classList.toggle('high-contrast'));
+    document.getElementById('dyslexicToggle').addEventListener('click', ()=> document.documentElement.classList.toggle('dyslexic'));
+    document.getElementById('fontInc').addEventListener('click', ()=> {
+      const r = document.documentElement; const size = parseFloat(getComputedStyle(r).fontSize||16); r.style.fontSize = (size+1)+'px';
+    });
+    document.getElementById('fontDec').addEventListener('click', ()=> {
+      const r = document.documentElement; const size = parseFloat(getComputedStyle(r).fontSize||16); r.style.fontSize = Math.max(12,size-1)+'px';
+    });
+
+    // Read popup aloud
+    document.getElementById('readPopupBtn').addEventListener('click', ()=> {
+      const sp = window.speechSynthesis;
+      if(!sp) return alert('Speech synthesis not supported in this browser.');
+      let text = '';
+      const pop = document.querySelector('.leaflet-popup-content');
+      if(pop) text = pop.innerText || pop.textContent || '';
+      if(!text) return alert('Open a popup first to read it aloud.');
+      sp.cancel();
+      sp.speak(new SpeechSynthesisUtterance(text));
+    });
+
+    // Close QR with escape
+    document.addEventListener('keydown', (e)=> { if(e.key === 'Escape'){ const m=document.getElementById('qrModal'); m.classList.add('hidden'); m.style.display='none'; } });
+
+    // Main startup
+    (async function init(){
+      try{
+        const resources = await loadResources('dtes-resources.json', 7000);
+        // keep a small embedded copy so app can fallback quick next time
+        window._embeddedResources = resources.slice(0,10);
+        // wait for leaflet to exist
+        const maxWait = 5000; let waited = 0;
+        while(typeof L === 'undefined' && waited < maxWait){ await new Promise(r=>setTimeout(r,100)); waited += 100; }
+        if(typeof L === 'undefined'){
+          document.getElementById('loadingMsg').textContent = 'Map libraries missing — using limited UI';
+          hideOverlay('Map libraries missing — check console or include libs for full functionality.');
+          // still render textual UI
+          resourcesGlobal = resources;
+          buildFilters(resourcesGlobal);
+          renderList(resourcesGlobal);
+          renderHotlines(resourcesGlobal);
+          return;
+        }
+
+        // init map
+        map = L.map('map').setView([49.2819, -123.1000], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'© OpenStreetMap contributors'}).addTo(map);
+
+        resourcesGlobal = resources;
+        buildFilters(resourcesGlobal);
+        renderMarkers(resourcesGlobal);
+        renderList(resourcesGlobal);
+        renderHotlines(resourcesGlobal);
+
+        hideOverlay();
+      }catch(err){
+        console.error('startup failed', err);
+        hideOverlay('Startup error — check console');
+      }
+    })();
+
+    // register service worker if available
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('/sw.js').catch(e => console.warn('SW registration failed', e));
+    }
   </script>
 </body>
 </html>
