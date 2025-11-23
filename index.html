@@ -1,400 +1,341 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vancouver DTES Lifeline Map</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Vancouver DTES Lifeline Map</title>
 
-    <!-- Local CSS libraries -->
-    <link rel="stylesheet" href="libs/leaflet/leaflet.css">
-    <link rel="stylesheet" href="libs/leaflet-routing-machine/leaflet-routing-machine.css">
-    <link rel="stylesheet" href="libs/fontawesome/css/all.min.css">
-    <link rel="stylesheet" href="css/tailwind.css">
+  <!-- Local CSS (must exist in repo) -->
+  <link rel="stylesheet" href="libs/leaflet/leaflet.css">
+  <link rel="stylesheet" href="libs/leaflet-routing-machine/leaflet-routing-machine.css">
+  <link rel="stylesheet" href="libs/fontawesome/css/all.min.css">
+  <link rel="stylesheet" href="css/tailwind.min.css">
 
-    <!-- Custom styles (spinner, modals, map container) -->
-    <style>
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #loadingOverlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255,255,255,0.98); z-index: 1010;
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
-            transition: opacity 0.5s;
-        }
-        .spinner {
-            border: 4px solid rgba(0, 0, 0, 0.1);
-            width: 40px; height: 40px;
-            border-radius: 50%;
-            border-left-color: #1D4ED8;
-            animation: spin 1s ease infinite;
-        }
-        .status-indicator { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
-        .status-open { background-color: #10B981; }
-        .status-closed { background-color: #EF4444; }
-        #quickExitBtn {
-            position: fixed; bottom: 20px; right: 20px;
-            background-color: #EF4444; color: white;
-            padding: 10px 15px; border-radius: 5px;
-            cursor: pointer; z-index: 1000; display: none;
-        }
-        .language-selector {
-            position: fixed; top: 10px; right: 10px; z-index: 1000;
-        }
-        .qr-modal { display: none; position: fixed; z-index: 1050;
-                    left: 0; top: 0; width: 100%; height: 100%;
-                    background-color: rgba(0,0,0,0.5); }
-        .qr-modal-content {
-            background-color: #fefefe; margin: 15% auto;
-            padding: 20px; border: 1px solid #888;
-            width: 80%; max-width: 400px; border-radius: 10px;
-            text-align: center;
-        }
-        .close-modal { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
-        .close-modal:hover { color: black; }
-        /* Map container */
-        #map {
-            height: 70vh; width: 100%; min-height: 400px;
-            border-radius: 0.75rem; background-color: #f3f4f6;
-        }
-    </style>
+  <style>
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;color:#0f172a;background:#f6f7fb}
+    .container{max-width:1100px;margin:18px auto;padding:12px}
+    #map{height:70vh;min-height:380px;border-radius:12px;background:#fff;box-shadow:0 8px 30px rgba(12,12,13,.06);overflow:hidden}
+    .chip{display:inline-flex;gap:.5rem;align-items:center;padding:.4rem .6rem;border-radius:999px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.06);font-weight:600;cursor:pointer}
+    #loadingOverlay{position:fixed;inset:0;background:rgba(255,255,255,0.96);z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center}
+    .spinner{border:4px solid rgba(0,0,0,.08);border-left-color:#2563eb;border-radius:50%;width:44px;height:44px;animation:spin 1s linear infinite}
+    @keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+    #offlineBanner{display:none;background:#ffedd5;color:#7c2d12;padding:8px 12px;border-radius:8px;margin:12px}
+    #accessibilityPanel{position:fixed;left:18px;bottom:18px;z-index:1100;background:rgba(255,255,255,.98);padding:10px;border-radius:10px;box-shadow:0 8px 24px rgba(12,12,13,.12)}
+    .hidden{display:none!important}
+    .rtl{direction:rtl}
+    .popup-btn{padding:.4rem .7rem;border-radius:.5rem;font-weight:600;display:inline-flex;align-items:center;justify-content:center;margin-top:10px;margin-right:5px;font-size:.85rem;cursor:pointer;border:none}
+  </style>
 </head>
 <body>
+  <!-- Loading overlay -->
+  <div id="loadingOverlay" aria-hidden="false" role="status">
+    <div class="spinner" aria-hidden="true"></div>
+    <div style="margin-top:12px;font-weight:700;font-size:18px;">DTES Lifeline Map</div>
+    <div id="loadingMsg" style="color:#6b7280;margin-top:6px;font-size:14px;">Loading resources...</div>
+  </div>
 
-    <!-- Loading overlay -->
-    <div id="loadingOverlay">
-        <div class="spinner mb-4"></div>
-        <div class="text-2xl font-bold text-gray-800">DTES Lifeline Map</div>
-        <div class="text-sm text-gray-500 mt-2">Loading community resources...</div>
-    </div>
+  <div id="offlineBanner" role="status" aria-live="polite"></div>
 
-    <!-- Language selector -->
-    <div class="language-selector">
-        <select id="languageSelect" class="bg-white border border-gray-300 rounded px-3 py-1 text-sm shadow-lg">
-            <option value="en">English</option>
-            <option value="zh">中文</option>
-            <option value="es">Español</option>
-            <option value="fr">Français</option>
-            <option value="bn">বাংলা</option>
-            <option value="tl">Tagalog</option>
-            <option value="ar">العربية</option>
-            <option value="fa">فارسی</option>
-            <option value="hi">हिन्दी</option>
-            <option value="ur">اردو</option>
-            <option value="pa">ਪੰਜਾਬੀ</option>
+  <div class="container" id="mainApp" style="display:block">
+    <header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div>
+        <h1 id="mainTitle" style="font-size:22px;margin:0 0 6px 0;">Vancouver DTES Lifeline Map</h1>
+        <div id="subtitle" style="color:#6b7280;font-size:14px;">Immediate access to food, shelters, harm reduction, and hotlines.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="languageSelect" aria-label="Choose language" class="chip" style="padding:6px;border-radius:6px;">
+          <option value="en">English</option><option value="zh">中文</option><option value="es">Español</option><option value="fr">Français</option>
+          <option value="bn">বাংলা</option><option value="tl">Tagalog</option><option value="ar">العربية</option><option value="fa">فارسی</option>
+          <option value="hi">हिन्दी</option><option value="ur">اردو</option><option value="pa">ਪੰਜਾਬੀ</option><option value="nl">Nederlands</option>
+          <option value="it">Italiano</option><option value="sv">Svenska</option><option value="de">Deutsch</option><option value="pt">Português</option>
         </select>
+        <button id="toggleListView" class="chip">List view</button>
+      </div>
+    </header>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+      <input id="searchBar" placeholder="Search by name, type, or service" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e6edf3;" aria-label="Search resources" />
+      <button id="locateUserButton" class="chip">Find me</button>
+      <button id="emergencyButton" class="chip" style="background:#ef4444;color:#fff;">911</button>
     </div>
 
-    <!-- QR Code Modal -->
-    <div id="qrModal" class="qr-modal">
-        <div class="qr-modal-content">
-            <span class="close-modal">×</span>
-            <h2 class="text-lg font-bold mb-4">Location QR Code</h2>
-            <p class="mb-4">Scan this code to get directions on your phone</p>
-            <div id="qrcode"></div>
-            <p id="qrLocationName" class="mt-4 text-sm text-gray-600"></p>
-        </div>
+    <div id="map" aria-label="Map area"></div>
+
+    <div id="listView" class="hidden" style="background:#fff;padding:12px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.06);max-height:60vh;overflow:auto"></div>
+
+    <footer style="margin-top:12px;">
+      <div id="hotlinesTitle" style="font-weight:700;margin-bottom:6px;">Hotlines & Support</div>
+      <div id="hotlinesGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;"></div>
+      <div style="color:var(--muted);font-size:12px;margin-top:10px;">Made for the DTES community — verify hours by calling first.</div>
+    </footer>
+  </div>
+
+  <!-- QR modal -->
+  <div id="qrModal" class="hidden" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:3200;">
+    <div style="background:#fff;padding:16px;border-radius:8px;max-width:420px;width:90%;">
+      <button id="closeQr" style="float:right;background:none;border:none;font-size:18px;">×</button>
+      <h3 id="qrTitle">QR Code</h3>
+      <div id="qrcode" style="margin:10px auto;text-align:center;"></div>
+      <div id="qrName" style="color:var(--muted);font-size:13px;"></div>
     </div>
+  </div>
 
-    <!-- Quick Exit button -->
-    <button id="quickExitBtn">
-        <i class="fas fa-times mr-2"></i> Quick Exit
-    </button>
-
-    <!-- Main content -->
-    <div id="mainAppContent" class="container mx-auto p-4 md:p-8 opacity-0 transition-opacity duration-500">
-        <header class="bg-white p-6 shadow-xl rounded-xl mb-6">
-            <h1 class="text-4xl font-extrabold text-gray-900 mb-2">Vancouver DTES Lifeline Map</h1>
-            <p class="text-gray-600 mb-2">
-                Instant access to harm reduction, supervised consumption, food banks, shelters, detox centers, and urgent care services.
-            </p>
-            <p class="text-sm text-gray-500 mb-2">
-                <span id="userLocationStatus" class="font-semibold text-gray-700">Ready to use</span>
-                <span class="mx-2">|</span>
-                <span id="resourceCount" class="text-blue-600 font-semibold">0 verified locations</span>
-            </p>
-            <div class="text-xs text-red-600 font-semibold mt-3 bg-red-50 p-3 rounded-lg border border-red-200">
-                <i class="fas fa-exclamation-triangle mr-2"></i>
-                <span>Important: Service hours may change.</span>
-            </div>
-        </header>
-
-        <!-- Map -->
-        <div id="map"></div>
-
-        <!-- Category filters -->
-        <div class="py-4 grid grid-cols-3 md:grid-cols-6 gap-2 text-center">
-            <button class="filter-button bg-white hover:bg-blue-50 text-gray-700 font-semibold py-2 rounded" data-type="Naloxone">
-                <i class="fas fa-laptop-medical mr-1"></i> Naloxone Kits
-            </button>
-            <button class="filter-button bg-white hover:bg-green-50 text-gray-700 font-semibold py-2 rounded" data-type="Injection Site">
-                <i class="fas fa-syringe mr-1"></i> Safe Injection
-            </button>
-            <button class="filter-button bg-white hover:bg-orange-50 text-gray-700 font-semibold py-2 rounded" data-type="Detox">
-                <i class="fas fa-clinic-medical mr-1"></i> Detox
-            </button>
-            <button class="filter-button bg-white hover:bg-purple-50 text-gray-700 font-semibold py-2 rounded" data-type="Food">
-                <i class="fas fa-utensils mr-1"></i> Food
-            </button>
-            <button class="filter-button bg-white hover:bg-yellow-50 text-gray-700 font-semibold py-2 rounded" data-type="Shelter">
-                <i class="fas fa-home mr-1"></i> Shelter
-            </button>
-            <button class="filter-button bg-white hover:bg-red-50 text-gray-700 font-semibold py-2 rounded" data-type="Urgent">
-                <i class="fas fa-ambulance mr-1"></i> Urgent Care
-            </button>
-            <button class="filter-button bg-white hover:bg-teal-50 text-gray-700 font-semibold py-2 rounded" data-type="Washrooms">
-                <i class="fas fa-restroom mr-1"></i> Washrooms
-            </button>
-            <button class="filter-button bg-white hover:bg-pink-50 text-gray-700 font-semibold py-2 rounded" data-type="Mental Health">
-                <i class="fas fa-brain mr-1"></i> Mental Health
-            </button>
-        </div>
-
-        <!-- Search input -->
-        <div class="pt-4">
-            <input id="searchInput" type="text" placeholder="Search by name or address..."
-                   class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500">
-        </div>
-
-        <!-- Footer / extra info -->
-        <footer class="bg-gray-50 p-4 rounded-xl mt-6 border border-gray-200">
-            <p class="text-xs text-gray-500">© 2025 DTES Lifeline Map. Made with ❤️ for the community.</p>
-        </footer>
+  <!-- Accessibility panel -->
+  <div id="accessibilityPanel" role="region" aria-label="Accessibility controls">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <strong>Accessibility</strong>
+      <button id="minimizeAccess" class="chip">━</button>
     </div>
+    <div id="accessControls">
+      <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center;">
+        <button id="contrastToggle" class="chip">High contrast</button>
+        <button id="dyslexicToggle" class="chip">Dyslexic font</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="fontDec" class="chip">A-</button>
+        <button id="fontInc" class="chip">A+</button>
+        <button id="readPopupBtn" class="chip">Read popup</button>
+      </div>
+    </div>
+  </div>
 
-    <!-- Local JS libraries -->
-    <script src="libs/leaflet/leaflet.js"></script>
-    <script src="libs/leaflet-routing-machine/leaflet-routing-machine.js"></script>
-    <script src="libs/qrcode/qrcode.min.js"></script>
+  <!-- Local JS libraries (must be present in repo under libs/) -->
+  <script src="libs/leaflet/leaflet.js"></script>
+  <script src="libs/leaflet-routing-machine/leaflet-routing-machine.min.js"></script>
+  <script src="libs/qrcode/qrcode.min.js"></script>
 
-    <!-- Application Script -->
-    <script>
-        let map, markers = [], userLocationMarker, userLat, userLng, routingControl;
-        let currentLanguage = 'en';
-        let dtesResources = [];
+  <script>
+  /* ---------------- App script (robust loader + map init + UI) ---------------- */
 
-        // Translation strings for popup (added English fallback for Hindi/Urdu/Punjabi)
-        const translations = {
-            en: {type: "Type", hours: "Hours", call: "Call", getDirections: "Get Directions", openInMaps: "Open in Maps", showQRCode: "Show QR", locating: "Locating...", locationFound: "Location found!", enableLocationFirst: "Enable your location first", directionsTo: "Directions to", followRedLine: "Follow the red line on map"},
-            zh: {type: "类型", hours: "时间", call: "致电", getDirections: "获取路线", openInMaps: "在地图中打开", showQRCode: "显示二维码", locating: "正在定位...", locationFound: "找到位置！", enableLocationFirst: "请先启用位置", directionsTo: "前往", followRedLine: "按照地图上的红线"},
-            es: {type: "Tipo", hours: "Horario", call: "Llamar", getDirections: "Direcciones", openInMaps: "Abrir en Mapas", showQRCode: "Código QR", locating: "Localizando...", locationFound: "¡Ubicación encontrada!", enableLocationFirst: "Active su ubicación primero", directionsTo: "Direcciones a", followRedLine: "Siga la línea roja"},
-            fr: {type: "Type", hours: "Heures", call: "Appeler", getDirections: "Itinéraire", openInMaps: "Ouvrir Maps", showQRCode: "Code QR", locating: "Localisation...", locationFound: "Position trouvée!", enableLocationFirst: "Activez votre position", directionsTo: "Itinéraire vers", followRedLine: "Suivez la ligne rouge"},
-            bn: {type: "ধরন", hours: "সময়", call: "কল", getDirections: "দিকনির্দেশ", openInMaps: "মানচিত্রে খুলুন", showQRCode: "QR কোড", locating: "খুঁজছি...", locationFound: "পাওয়া গেছে!", enableLocationFirst: "প্রথমে অবস্থান সক্রিয় করুন", directionsTo: "দিকনির্দেশ", followRedLine: "লাল রেখা অনুসরণ করুন"},
-            tl: {type: "Uri", hours: "Oras", call: "Tumawag", getDirections: "Direksyon", openInMaps: "Buksan sa Maps", showQRCode: "QR Code", locating: "Hinahanap...", locationFound: "Nahanap!", enableLocationFirst: "I-enable muna", directionsTo: "Direksyon sa", followRedLine: "Sundin ang pulang linya"},
-            ar: {type: "النوع", hours: "الساعات", call: "اتصل", getDirections: "الاتجاهات", openInMaps: "فتح الخرائط", showQRCode: "رمز QR", locating: "جارٍ التحديد...", locationFound: "تم العثور!", enableLocationFirst: "قم بتفعيل الموقع أولاً", directionsTo: "اتجاهات إلى", followRedLine: "اتبع الخط الأحمر"},
-            fa: {type: "نوع", hours: "ساعات", call: "تماس", getDirections: "مسیر", openInMaps: "باز کردن نقشه", showQRCode: "کد QR", locating: "در حال یافتن...", locationFound: "یافت شد!", enableLocationFirst: "ابتدا موقعیت را فعال کنید", directionsTo: "مسیر به", followRedLine: "خط قرمز را دنبال کنید"},
-            hi: {type: "Type", hours: "Hours", call: "Call", getDirections: "Get Directions", openInMaps: "Open in Maps", showQRCode: "Show QR", locating: "Locating...", locationFound: "Location found!", enableLocationFirst: "Enable your location first", directionsTo: "Directions to", followRedLine: "Follow the red line"},
-            ur: {type: "Type", hours: "Hours", call: "Call", getDirections: "Get Directions", openInMaps: "Open in Maps", showQRCode: "Show QR", locating: "Locating...", locationFound: "Location found!", enableLocationFirst: "Enable your location first", directionsTo: "Directions to", followRedLine: "Follow the red line"},
-            pa: {type: "Type", hours: "Hours", call: "Call", getDirections: "Get Directions", openInMaps: "Open in Maps", showQRCode: "Show QR", locating: "Locating...", locationFound: "Location found!", enableLocationFirst: "Enable your location first", directionsTo: "Directions to", followRedLine: "Follow the red line"}
-        };
+  // tiny helper to safely hide loading overlay
+  function hideLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (!overlay) return;
+    overlay.setAttribute('aria-hidden','true');
+    overlay.style.transition = 'opacity .4s ease';
+    overlay.style.opacity = '0';
+    setTimeout(()=> { if(overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 420);
+  }
 
-        // Create popup content for a resource
-        function createPopup(r) {
-            const colors = {
-                'Naloxone': '#3B82F6', 'Injection Site': '#10B981',
-                'Detox': '#F97316', 'Food': '#9333EA', 'Shelter': '#b45309',
-                'Urgent': '#EF4444', 'Washrooms': '#14B8A6', 'Mental Health': '#EC4899'
-            };
-            const t = translations[currentLanguage];
-            const safeName = r.name.replace(/'/g, "\\'");
+  // Robust resource loader (network -> cache -> embedded fallback)
+  async function loadResources(url='dtes-resources.json', timeoutMs=7000) {
+    const offlineBanner = document.getElementById('offlineBanner');
+    function showBanner(msg) {
+      if (offlineBanner) { offlineBanner.style.display='block'; offlineBanner.textContent = msg; }
+    }
+    function fetchTimeout(resource, opts={}) {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(()=> reject(new Error('timeout')), timeoutMs);
+        fetch(resource, opts).then(res => { clearTimeout(timer); resolve(res); }).catch(err => { clearTimeout(timer); reject(err); });
+      });
+    }
 
-            return `
-                <div style="max-width: 280px; font-family: Nunito Sans, sans-serif;">
-                    <h3 style="font-weight:bold; margin-bottom:10px; font-size:16px; color:#1F2937;">${r.name}</h3>
-                    <p style="margin-bottom:8px; font-size:13px;">
-                        <span class="status-indicator ${r.status==='open'?'status-open':'status-closed'}"></span>
-                        <strong style="color:${colors[r.type]||'#6B7280'};">${t.type}:</strong> ${r.type}
-                    </p>
-                    <p style="margin-bottom:8px; font-size:13px;">${r.description}</p>
-                    <p style="margin-bottom:8px; font-size:13px;"><strong>${t.hours}:</strong> ${r.hours}</p>
-                    <p style="margin-bottom:12px; font-size:13px;">
-                        <strong>${t.call}:</strong> 
-                        <a href="tel:${r.phone}" style="color:#2563EB; text-decoration:underline;">${r.phone}</a>
-                    </p>
-                    <p style="margin-bottom:8px; font-size:12px; color:#6B7280;">
-                        <i class="fas fa-map-marker-alt"></i> ${r.address}
-                    </p>
-                    <button onclick="openInMaps(${r.lat}, ${r.lng})" class="popup-btn bg-blue-600 text-white">
-                        <i class="fas fa-directions mr-1"></i> ${t.getDirections}
-                    </button>
-                    <button onclick="showQRCode(${r.lat}, ${r.lng}, '${safeName}')" class="popup-btn bg-green-600 text-white">
-                        <i class="fas fa-qrcode mr-1"></i> ${t.showQRCode}
-                    </button>
-                </div>
-            `;
+    // 1. try network
+    try {
+      const r = await fetchTimeout(url, {cache:'no-store'});
+      if (!r.ok) throw new Error('network response ' + r.status);
+      const data = await r.json();
+      console.info('Loaded resources from network:', (data && data.length) || 0);
+      return data;
+    } catch (e) {
+      console.warn('Network load failed:', e);
+      showBanner('Offline or network error — loading cached resources if available.');
+    }
+
+    // 2. try caches
+    try {
+      if ('caches' in window) {
+        const m = await caches.match(url);
+        if (m) {
+          const data = await m.json();
+          console.info('Loaded resources from cache:', (data && data.length) || 0);
+          return data;
         }
+      }
+    } catch (e) { console.warn('Cache load failed', e); }
 
-        // Map initialization
-        function initMap() {
-            if (typeof L === 'undefined') {
-                console.error('Leaflet not loaded!');
-                return;
-            }
-            map = L.map('map').setView([49.2819, -123.1000], 14);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap', maxZoom: 19
-            }).addTo(map);
-            // Add markers for all resources
-            dtesResources.forEach(r => {
-                const colors = {
-                    'Naloxone': '#3B82F6', 'Injection Site': '#10B981',
-                    'Detox': '#F97316', 'Food': '#9333EA', 'Shelter': '#b45309',
-                    'Urgent': '#EF4444', 'Washrooms': '#14B8A6', 'Mental Health': '#EC4899'
-                };
-                const iconHtml = `<div style="background-color: ${colors[r.type]||'#6B7280'}; width:28px; height:28px; border-radius:50%; border:3px solid white; box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>`;
-                const icon = L.divIcon({ html: iconHtml, iconSize:[28,28], iconAnchor:[14,14] });
-                const marker = L.marker([r.lat, r.lng], { icon: icon })
-                    .addTo(map)
-                    .bindPopup(createPopup(r));
-                marker.resourceData = r;
-                markers.push(marker);
-            });
-            // Update resource count
-            document.getElementById('resourceCount').textContent = dtesResources.length + ' verified locations';
-            // Fade in content
-            setTimeout(() => {
-                document.getElementById('loadingOverlay').style.opacity = 0;
-                setTimeout(() => {
-                    document.getElementById('loadingOverlay').style.display = 'none';
-                    document.getElementById('mainAppContent').style.opacity = 1;
-                }, 500);
-            }, 800);
-        }
+    // 3. embedded fallback if present
+    if (window._embeddedResources && Array.isArray(window._embeddedResources) && window._embeddedResources.length) {
+      console.info('Loaded resources from embedded fallback:', window._embeddedResources.length);
+      return window._embeddedResources;
+    }
 
-        // Show QR code modal
-        window.showQRCode = function(lat, lng, name) {
-            const url = `https://maps.google.com/maps?q=${lat},${lng}(${encodeURIComponent(name)})`;
-            const modal = document.getElementById('qrModal');
-            document.getElementById('qrLocationName').textContent = name;
-            const qrcodeDiv = document.getElementById('qrcode');
-            qrcodeDiv.innerHTML = '';
-            new QRCode(qrcodeDiv, { text: url, width:200, height:200, colorDark:"#000", colorLight:"#fff", correctLevel:QRCode.CorrectLevel.H });
-            modal.style.display = 'block';
-        };
-        document.querySelector('.close-modal').onclick = () => {
-            document.getElementById('qrModal').style.display = 'none';
-        };
+    // final fallback: empty array
+    showBanner('Unable to load resources. Try refresh or check network.');
+    return [];
+  }
 
-        // Open location in external Maps
-        function openInMaps(lat, lng) {
-            const url = `https://maps.google.com/maps?q=${lat},${lng}`;
-            window.open(url, '_blank');
-        }
+  // Application state
+  let map, markers = [], userLoc = null, routingControl = null, lastPopupText='';
 
-        // Quick exit: immediately navigate to a safe site
-        document.getElementById('quickExitBtn').addEventListener('click', () => {
-            window.location.href = 'https://www.google.com';
-        });
+  // Basic translations object (keeps popups simple)
+  const I18N = {
+    en: { popupType:'Type', popupHours:'Hours', popupCall:'Call', popupGetDirections:'Get Directions', popupQR:'Show QR', youAreHere:'You are here', offlineMsg:'You are offline — some features may be unavailable.' },
+    ar: { popupType:'النوع', popupHours:'الساعات', popupCall:'اتصل', popupGetDirections:'الاتجاهات', popupQR:'عرض QR', youAreHere:'أنت هنا', offlineMsg:'أنت في وضع عدم الاتصال' },
+    zh: { popupType:'类型', popupHours:'时间', popupCall:'致电', popupGetDirections:'路线', popupQR:'显示二维码', youAreHere:'您在这里', offlineMsg:'离线' },
+    es: { popupType:'Tipo', popupHours:'Horario', popupCall:'Llamar', popupGetDirections:'Direcciones', popupQR:'Mostrar QR', youAreHere:'Usted está aquí', offlineMsg:'Sin conexión' },
+    fr: { popupType:'Type', popupHours:'Heures', popupCall:'Appeler', popupGetDirections:'Itinéraire', popupQR:'QR', youAreHere:'Vous êtes ici', offlineMsg:'Hors ligne' },
+    bn: { popupType:'ধরন', popupHours:'সময়', popupCall:'কল', popupGetDirections:'দিকনির্দেশ', popupQR:'QR', youAreHere:'আপনি এখানে', offlineMsg:'অফলাইন' },
+    tl: { popupType:'Uri', popupHours:'Oras', popupCall:'Tumawag', popupGetDirections:'Direksyon', popupQR:'QR', youAreHere:'Nandito ka', offlineMsg:'Offline' },
+    fa: { popupType:'نوع', popupHours:'ساعات', popupCall:'تماس', popupGetDirections:'مسیر', popupQR:'QR', youAreHere:'شما اینجا هستید', offlineMsg:'آفلاین' },
+    hi: { popupType:'प्रकार', popupHours:'समय', popupCall:'कॉल', popupGetDirections:'दिशाएँ', popupQR:'QR', youAreHere:'आप यहाँ हैं', offlineMsg:'ऑफ़लाइन' },
+    ur: { popupType:'قسم', popupHours:'اوقات', popupCall:'کال', popupGetDirections:'ہدایت', popupQR:'QR', youAreHere:'آپ یہاں ہیں', offlineMsg:'آف لائن' },
+    pa: { popupType:'ਕਿਸਮ', popupHours:'ਸਮਾਂ', popupCall:'ਕਾਲ', popupGetDirections:'ਦਿਸ਼ਾ', popupQR:'QR', youAreHere:'ਤੁਸੀਂ ਇੱਥੇ ਹੋ', offlineMsg:'ਆਫਲਾਈਨ' }
+  };
 
-        // Enable quick exit on Ctrl+Q for accessibility
-        document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.key === 'q') {
-                window.location.href = 'https://www.google.com';
-            }
-        });
+  // Create popup HTML
+  function createPopupHTML(r) {
+    const lang = document.getElementById('languageSelect').value || 'en';
+    const t = I18N[lang] || I18N.en;
+    const phoneHtml = r.phone ? `<a href="tel:${r.phone}">${r.phone}</a>` : 'N/A';
+    const safeName = (r.name||'').replace(/'/g,"\\'");
+    return `
+      <div style="max-width:320px">
+        <h3 style="margin:0 0 6px 0;font-weight:700">${r.name||''}</h3>
+        <div style="font-size:13px;margin-bottom:6px;"><strong>${t.popupType}:</strong> ${r.type||''}</div>
+        <div style="font-size:13px;margin-bottom:6px;"><strong>${t.popupHours}:</strong> ${r.hours||'N/A'}</div>
+        <div style="font-size:13px;margin-bottom:6px;"><strong>${t.popupCall}:</strong> ${phoneHtml}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:6px">${r.address||''}</div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button class="popup-btn" onclick="openInMaps(${r.lat},${r.lng},'${safeName}')">${t.popupGetDirections}</button>
+          <button class="popup-btn" onclick="showQR(${r.lat},${r.lng},'${safeName}')">${t.popupQR}</button>
+        </div>
+      </div>
+    `;
+  }
 
-        // Language switcher
-        document.getElementById('languageSelect').addEventListener('change', function() {
-            currentLanguage = this.value;
-        });
+  function openInMaps(lat,lng,name){ window.open(`https://maps.google.com/?q=${lat},${lng}(${encodeURIComponent(name)})`,'_blank'); }
 
-        // Category filter buttons
-        document.querySelectorAll('.filter-button').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const type = this.getAttribute('data-type');
-                if (this.classList.contains('active')) {
-                    this.classList.remove('active');
-                    markers.forEach(m => { if (m.resourceData.type === type) m.addTo(map); });
-                } else {
-                    this.classList.add('active');
-                    markers.forEach(m => { if (m.resourceData.type === type) map.removeLayer(m); });
-                }
-            });
-        });
+  // show QR modal (uses local qrcode lib)
+  function showQR(lat,lng,name){
+    const url = `https://maps.google.com/?q=${lat},${lng}(${encodeURIComponent(name)})`;
+    const modal = document.getElementById('qrModal');
+    if(window.QRCode){
+      const qEl = document.getElementById('qrcode'); qEl.innerHTML='';
+      try { new QRCode(qEl, { text:url, width:200, height:200 }); } catch(e){ qEl.textContent = url; }
+    } else {
+      document.getElementById('qrcode').innerHTML = `<a href="${url}" target="_blank">${url}</a>`;
+    }
+    document.getElementById('qrName').textContent = name || '';
+    modal.classList.remove('hidden');
+    modal.style.display='flex';
+  }
+  document.getElementById('closeQr').addEventListener('click', ()=> { const m=document.getElementById('qrModal'); m.classList.add('hidden'); m.style.display='none'; });
 
-        // Search by name/address
-        document.getElementById('searchInput').addEventListener('input', function() {
-            const query = this.value.toLowerCase();
-            markers.forEach(m => {
-                const r = m.resourceData;
-                if (r.name.toLowerCase().includes(query) || r.address.toLowerCase().includes(query)) {
-                    m.addTo(map);
-                } else {
-                    map.removeLayer(m);
-                }
-            });
-        });
+  // add markers after we have resources and map
+  function addMarkers(resources){
+    if(!map) return;
+    markers.forEach(m=> m.remove());
+    markers = [];
+    resources.forEach(r=>{
+      if(typeof r.lat === 'number' && typeof r.lng === 'number'){
+        const colorMap = {'Food':'#9333EA','Shelter':'#b45309','Detox':'#F97316','Naloxone':'#3B82F6','Hotline':'#6B7280','Washrooms':'#14B8A6','Mental Health':'#EC4899','Injection Site':'#10B981','Clothing':'#0ea5a4','Urgent':'#EF4444'};
+        const color = colorMap[r.type] || '#6B7280';
+        const icon = L.divIcon({ html:`<div style="background:${color};width:28px;height:28px;border-radius:50%;border:3px solid white"></div>`, className:'', iconSize:[28,28], iconAnchor:[14,14] });
+        const marker = L.marker([r.lat,r.lng],{icon}).addTo(map);
+        marker.resource = r;
+        marker.bindPopup(createPopupHTML(r));
+        markers.push(marker);
+      }
+    });
+    // update resource count UI
+    const rc = document.getElementById('resourceCount');
+    if(rc) rc.textContent = (resources.length||0) + ' verified locations';
+  }
 
-        // Geolocation (find user)
-        document.getElementById('userLocationStatus').addEventListener('click', () => {
-            if (!navigator.geolocation) {
-                alert('Geolocation not supported by your browser');
-                return;
-            }
-            document.getElementById('userLocationStatus').textContent = translations[currentLanguage].locating;
-            navigator.geolocation.getCurrentPosition(
-                pos => {
-                    userLat = pos.coords.latitude;
-                    userLng = pos.coords.longitude;
-                    if (userLocationMarker) map.removeLayer(userLocationMarker);
-                    userLocationMarker = L.marker([userLat, userLng], {
-                        icon: L.divIcon({ html: '<div class="user-location-icon"></div>', iconSize:[26,26], iconAnchor:[13,13] })
-                    }).addTo(map);
-                    document.getElementById('userLocationStatus').textContent = translations[currentLanguage].locationFound;
-                    // Offer directions from user location
-                    document.querySelectorAll('.direction-btn').forEach(btn => btn.style.display = 'inline-flex');
-                },
-                err => {
-                    document.getElementById('userLocationStatus').textContent = 'Unable to retrieve location';
-                    console.error(err);
-                }
-            );
-        });
+  // init map (after leaflet present)
+  function initMap(resources){
+    if(typeof L === 'undefined') {
+      console.error('Leaflet missing');
+      hideLoadingOverlay();
+      return;
+    }
+    map = L.map('map',{preferCanvas:true}).setView([49.2819,-123.1000],14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+    addMarkers(resources || []);
+  }
 
-        // Leaflet Routing for directions
-        function routeTo(lat, lng) {
-            if (!userLat || !userLng) {
-                alert(translations[currentLanguage].enableLocationFirst);
-                return;
-            }
-            if (routingControl) map.removeControl(routingControl);
-            routingControl = L.Routing.control({
-                waypoints: [L.latLng(userLat, userLng), L.latLng(lat, lng)],
-                show: false, routeWhileDragging: false, lineOptions: { styles: [{color: '#EF4444', weight: 5}] }
-            }).addTo(map);
-        }
+  // watcher to ensure libraries loaded before init
+  function waitAndInit(resources, attempts=0){
+    if(typeof L !== 'undefined') {
+      initMap(resources);
+      // hide loading overlay - map + markers are initialized
+      hideLoadingOverlay();
+    } else {
+      if(attempts > 50){ // give up after 5 seconds
+        console.error('Leaflet did not load in time');
+        hideLoadingOverlay();
+        return;
+      }
+      setTimeout(()=> waitAndInit(resources, attempts+1), 100);
+    }
+  }
 
-        // Attach routing to popup buttons (delegated)
-        map && map.on('popupopen', function(e) {
-            const btn = e.popup.getElement().querySelector('.direction-btn');
-            if (btn) {
-                btn.addEventListener('click', function() {
-                    const r = e.popup._source.resourceData;
-                    routeTo(r.lat, r.lng);
-                });
-            }
-        });
+  // main startup
+  document.addEventListener('DOMContentLoaded', async ()=>{
+    try {
+      const resources = await loadResources('dtes-resources.json', 7000);
+      window._resources = resources;
+      waitAndInit(resources);
+    } catch (err) {
+      console.error('Startup failed', err);
+      // ensure overlay hidden on error
+      hideLoadingOverlay();
+    }
+  });
 
-        // Initialize after libraries and data load
-        function waitForLeaflet() {
-            if (typeof L !== 'undefined' && typeof L.Routing !== 'undefined') {
-                initMap();
-            } else {
-                setTimeout(waitForLeaflet, 100);
-            }
-        }
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                fetch('dtes-resources.json')
-                    .then(resp => resp.json())
-                    .then(data => { dtesResources = data; waitForLeaflet(); })
-                    .catch(err => console.error('Failed to load resources:', err));
-            });
-        } else {
-            fetch('dtes-resources.json')
-                .then(resp => resp.json())
-                .then(data => { dtesResources = data; waitForLeaflet(); })
-                .catch(err => console.error('Failed to load resources:', err));
-        }
-    </script>
+  // search & filter behavior
+  document.getElementById('searchBar').addEventListener('input', e=>{
+    const q = e.target.value.toLowerCase().trim();
+    markers.forEach(m=>{
+      const r = m.resource || {};
+      const hay = `${r.name||''} ${r.type||''} ${r.address||''} ${r.phone||''}`.toLowerCase();
+      if(!q || hay.includes(q)) {
+        if(!map.hasLayer(m)) m.addTo(map);
+      } else {
+        if(map.hasLayer(m)) map.removeLayer(m);
+      }
+    });
+  });
+
+  document.getElementById('locateUserButton').addEventListener('click', ()=>{
+    if(!navigator.geolocation) return alert('Geolocation not supported');
+    document.getElementById('locateUserButton').textContent = 'Locating...';
+    navigator.geolocation.getCurrentPosition(pos=>{
+      userLoc = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+      if(window._you) window._you.remove();
+      window._you = L.circleMarker([userLoc.lat,userLoc.lng],{radius:8,color:'#2563EB',fillColor:'#3B82F6',fillOpacity:1}).addTo(map).bindPopup(I18N[document.getElementById('languageSelect').value||'en'].youAreHere).openPopup();
+      map.setView([userLoc.lat,userLoc.lng],15);
+      document.getElementById('locateUserButton').textContent = 'Find me';
+    }, err=>{
+      alert('Unable to get location: ' + err.message);
+      document.getElementById('locateUserButton').textContent = 'Find me';
+    });
+  });
+
+  // accessibility controls
+  document.getElementById('contrastToggle').addEventListener('click', ()=> document.body.classList.toggle('high-contrast'));
+  document.getElementById('dyslexicToggle').addEventListener('click', ()=> document.body.classList.toggle('dyslexic-font'));
+  document.getElementById('fontInc').addEventListener('click', ()=> {
+    const root = document.documentElement; const size = parseFloat(getComputedStyle(root).fontSize||16);
+    root.style.fontSize = (size+1)+'px';
+  });
+  document.getElementById('fontDec').addEventListener('click', ()=> {
+    const root = document.documentElement; const size = parseFloat(getComputedStyle(root).fontSize||16);
+    root.style.fontSize = Math.max(12,size-1)+'px';
+  });
+  document.getElementById('minimizeAccess').addEventListener('click', ()=> document.getElementById('accessibilityPanel').classList.toggle('minimized'));
+
+  // close QR on Escape
+  document.addEventListener('keydown', (e)=> { if(e.key==='Escape') { document.getElementById('qrModal').classList.add('hidden'); document.getElementById('qrModal').style.display='none'; } });
+
+  </script>
+
+  <!-- Service worker registration (optional) -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(err => console.warn('SW register failed', err));
+    }
+  </script>
 </body>
 </html>
