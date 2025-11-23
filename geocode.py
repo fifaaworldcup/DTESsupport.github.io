@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import requests, time, json
 from pathlib import Path
-EMAIL = "your-email@example.com"  # replace with a real contact email per Nominatim policy
 INPUT = Path("dtes-resources.json")
 OUTPUT = Path("dtes-resources.geocoded.json")
 if not INPUT.exists():
