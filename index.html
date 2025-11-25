@@ -5,18 +5,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Vancouver DTES Lifeline Map</title>
 
-  <!-- Prefer local; JS below swaps to CDN if missing -->
+  <!-- local-first CSS; falls back to CDN in script below -->
   <link id="leaflet-css" rel="stylesheet" href="libs/leaflet/leaflet.css">
   <link id="lrm-css" rel="stylesheet" href="libs/leaflet-routing-machine/leaflet-routing-machine.css">
+  <link id="markercluster-css" rel="stylesheet" href="libs/leaflet-markercluster/MarkerCluster.css">
+  <link id="markercluster-default-css" rel="stylesheet" href="libs/leaflet-markercluster/MarkerCluster.Default.css">
   <link id="tailwind-css" rel="stylesheet" href="css/tailwind.min.css">
 
   <style>
-    :root{
-      --bg:#071014; --muted:#9be7d0; --accent:#2ee0b6; --panel-bg:rgba(255,255,255,0.03);
-    }
+    :root{--bg:#071014;--muted:#9be7d0;--accent:#2ee0b6}
     html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#d8fff0}
     .container{max-width:1200px;margin:20px auto;padding:18px}
-    header h1{margin:0;font-size:26px}
     #map{height:68vh;border-radius:10px;overflow:hidden;background:#fff}
     .chip{display:inline-flex;align-items:center;gap:.5rem;padding:.45rem .7rem;border-radius:999px;border:2px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer}
     #loadingOverlay{position:fixed;inset:0;background:rgba(2,6,23,0.96);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--muted)}
@@ -28,19 +27,24 @@
     #filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
     .category{padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.06);cursor:pointer}
     .hidden{display:none!important}
-    #accessPanel{position:fixed;left:16px;bottom:16px;background:var(--panel-bg);padding:10px;border-radius:10px;z-index:1200;backdrop-filter: blur(6px)}
+    #accessPanel{position:fixed;left:16px;bottom:16px;background:rgba(255,255,255,0.03);padding:10px;border-radius:10px;z-index:1200;backdrop-filter: blur(6px)}
     #accessPanel.minimized{height:36px;overflow:hidden;padding:6px}
     .high-contrast{filter:contrast(1.2)}
     .dyslexic{font-family: 'OpenDyslexic', Arial, sans-serif}
-    #listView{margin-top:12px;background:var(--panel-bg);padding:12px;border-radius:8px;max-height:36vh;overflow:auto}
-    a.chip{display:inline-flex;text-decoration:none;align-items:center;justify-content:center}
+    #listView{margin-top:12px;background:rgba(255,255,255,0.02);padding:12px;border-radius:8px;max-height:36vh;overflow:auto}
+    /* cluster styles (the inner circle) */
+    .custom-cluster {
+      display:flex;align-items:center;justify-content:center;border-radius:50%;
+      color:#012;font-weight:700;text-align:center;border:4px solid #fff;
+      box-shadow:0 4px 10px rgba(0,0,0,0.45);
+    }
   </style>
 </head>
 <body>
   <div id="loadingOverlay" role="status" aria-live="polite">
     <div class="spinner" aria-hidden="true"></div>
     <div style="font-weight:700;font-size:18px">DTES Lifeline Map</div>
-    <div id="loadingMsg" style="margin-top:8px;color:var(--muted)">Loading resources...</div>
+    <div id="loadingMsg" style="margin-top:8px;color:var(--muted)">Loading resources & map...</div>
   </div>
 
   <div id="offlineBanner" role="alert" aria-live="assertive"></div>
@@ -51,7 +55,6 @@
         <h1>Vancouver DTES Lifeline Map</h1>
         <div id="subtitle" style="color:var(--muted)">Immediate access to food, shelters, harm reduction, and hotlines.</div>
       </div>
-
       <div style="display:flex;gap:10px;align-items:center">
         <select id="languageSelect" aria-label="Select language" class="chip" style="background:transparent;border-color:#93f1d1">
           <option value="en">English</option>
@@ -77,9 +80,7 @@
     </div>
 
     <div id="filters" aria-label="Category filters"></div>
-
     <div id="map" style="margin-top:12px"></div>
-
     <div id="listView" class="hidden"></div>
 
     <section style="margin-top:14px">
@@ -90,7 +91,7 @@
     <footer style="margin-top:12px;color:#8fd9c4;font-size:12px">Made for the DTES community — verify hours by calling first.</footer>
   </div>
 
-  <!-- QR modal -->
+  <!-- QR modal (kept) -->
   <div id="qrModal" class="hidden" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:4000">
     <div style="background:#011;padding:16px;border-radius:10px;width:320px;color:#dff">
       <button id="closeQR" style="float:right;background:none;border:none;color:#dff;font-size:18px">×</button>
@@ -100,7 +101,7 @@
     </div>
   </div>
 
-  <!-- Accessibility panel -->
+  <!-- Accessibility panel (kept) -->
   <div id="accessPanel" role="region" aria-label="Accessibility controls">
     <div style="display:flex;align-items:center;gap:8px">
       <strong>Accessibility</strong>
@@ -119,19 +120,25 @@
     </div>
   </div>
 
-  <!-- Load JS libraries with local-first, CDN fallback -->
+  <!-- Local-first script loader for libs (CDN fallback) -->
   <script>
     async function fileExists(path){
       try{ const r = await fetch(path, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch(e){ return false; }
     }
     (async function ensureLibs(){
+      // CSS fallbacks
       if(!(await fileExists('libs/leaflet/leaflet.css'))) document.getElementById('leaflet-css').href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
       if(!(await fileExists('libs/leaflet-routing-machine/leaflet-routing-machine.css'))) document.getElementById('lrm-css').href = 'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css';
+      if(!(await fileExists('libs/leaflet-markercluster/MarkerCluster.css'))) document.getElementById('markercluster-css').href = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css';
+      if(!(await fileExists('libs/leaflet-markercluster/MarkerCluster.Default.css'))) document.getElementById('markercluster-default-css').href = 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css';
       if(!(await fileExists('css/tailwind.min.css'))) document.getElementById('tailwind-css').href = 'https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css';
+
+      // JS libs (local-first)
       const libs = [
-        { local: 'libs/leaflet/leaflet.js', cdn: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' },
-        { local: 'libs/leaflet-routing-machine/leaflet-routing-machine.min.js', cdn: 'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js' },
-        { local: 'libs/qrcode/qrcode.min.js', cdn: 'https://davidshimjs.github.io/qrcodejs/qrcode.min.js' }
+        { local:'libs/leaflet/leaflet.js', cdn:'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' },
+        { local:'libs/leaflet-markercluster/leaflet.markercluster.js', cdn:'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js' },
+        { local:'libs/leaflet-routing-machine/leaflet-routing-machine.min.js', cdn:'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js' },
+        { local:'libs/qrcode/qrcode.min.js', cdn:'https://davidshimjs.github.io/qrcodejs/qrcode.min.js' }
       ];
       for(const lib of libs){
         const ok = await fileExists(lib.local);
@@ -147,16 +154,17 @@
     })();
   </script>
 
-  <!-- App script -->
+  <!-- App script (map, clusters, routing, translations, accessibility) -->
   <script>
-    /* Robust loader + map + translations + routing + accessibility */
+    // Helper to hide loader
     function hideOverlay(msg){
       const overlay = document.getElementById('loadingOverlay');
-      if(overlay){ overlay.style.transition='opacity .3s'; overlay.style.opacity='0'; setTimeout(()=> overlay.remove(),350); }
+      if(overlay){ overlay.style.transition='opacity .25s'; overlay.style.opacity='0'; setTimeout(()=> overlay.remove(),250); }
       if(msg){ const b=document.getElementById('offlineBanner'); b.style.display='block'; b.textContent = msg; }
       document.getElementById('app').style.visibility = 'visible';
     }
 
+    // load resources same way as before (network, cache, embedded fallback)
     async function loadResources(url='dtes-resources.json', timeoutMs=7000){
       const show = (m)=>{ const b=document.getElementById('offlineBanner'); b.style.display='block'; b.textContent = m; };
       function fetchTimeout(resource){
@@ -169,7 +177,6 @@
         const r = await fetchTimeout(url);
         if(!r.ok) throw new Error('network ' + r.status);
         const d = await r.json();
-        console.info('Loaded resources (network):', d.length);
         return d;
       }catch(e){
         console.warn('Network failed', e); show('Network error — attempting cached resources.');
@@ -177,14 +184,15 @@
       try{
         if('caches' in window){
           const match = await caches.match(url);
-          if(match){ const d = await match.json(); console.info('Loaded resources from cache', d.length); return d; }
+          if(match){ const d = await match.json(); return d; }
         }
       }catch(e){ console.warn('Cache failed', e); }
-      if(window._embeddedResources && window._embeddedResources.length){ console.info('Using embedded fallback'); return window._embeddedResources; }
+      if(window._embeddedResources && window._embeddedResources.length) return window._embeddedResources;
       show('Unable to load resources.');
       return [];
     }
 
+    // UI strings
     const UI_STRINGS = {
       en:{list:'List view', find:'Find me', emergency:'911', search:'Search by name, type, or address', you:'You are here', offline:'You are offline'},
       ar:{list:'عرض القائمة', find:'موقعي', emergency:'٩١١', search:'ابحث باسم أو نوع أو عنوان', you:'أنت هنا', offline:'أنت غير متصل'},
@@ -199,10 +207,30 @@
       fr:{list:'Voir la liste', find:'Me localiser', emergency:'911', search:'Rechercher par nom, type ou adresse', you:'Vous êtes ici', offline:'Hors ligne'}
     };
 
-    let map, resourcesGlobal = [], markers = [], currentLang='en', userLocation=null, routingControl=null;
+    // Globals
+    let map = null;
+    let userLocation = null;
+    let resourcesGlobal = [];
+    let markersLayer = null;           // MarkerClusterGroup
+    let routingControl = null;
 
+    // create a single marker (not cluster) for a resource
+    function createMarker(r){
+      if(!r || typeof r.lat !== 'number' || typeof r.lng !== 'number') return null;
+      const colorMap = {'Food':'#9333EA','Shelter':'#b45309','Injection Site':'#10B981','Harm Reduction':'#06b6d4','Naloxone':'#3B82F6','Washrooms':'#14B8A6','Clothing':'#0ea5a4','Urgent':'#ef4444','Mental Health':'#EC4899','Hotline':'#6B7280','Outreach':'#F59E0B','Support':'#F97316','Drop-in':'#8B5CF6','Medical':'#0ea5a4','Other':'#6B7280'};
+      const color = colorMap[r.type] || '#6B7280';
+      // small circle marker for individual items
+      const html = `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:2px solid #fff;"></div>`;
+      const icon = L.divIcon({ html, className:'single-pin', iconSize:[22,22], iconAnchor:[11,11] });
+      const m = L.marker([r.lat, r.lng], { icon });
+      m.bindPopup(popupHtml(r), { maxWidth:320 });
+      m.resource = r;
+      return m;
+    }
+
+    // popup HTML builds with translation lookup like before
     function popupHtml(res){
-      const lang = currentLang || 'en';
+      const lang = (document.getElementById('languageSelect')?.value) || 'en';
       let title = res.name || '';
       let desc = res.description || '';
       let hours = res.hours || '';
@@ -226,6 +254,19 @@
         </div></div>`;
     }
 
+    // cluster icon factory - number + size based on count
+    function makeClusterIcon(cluster){
+      const childCount = cluster.getChildCount();
+      // size scale (min 36, max 88)
+      const size = Math.min(88, Math.max(36, 28 + Math.round(Math.log(childCount + 1) * 12)));
+      const fontSize = Math.max(12, Math.round(size / 3.6));
+      const color = '#2ee0b6';
+      const html = `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;border:4px solid #fff;">
+        <span style="color:#012;font-weight:800;font-size:${fontSize}px;line-height:1">${childCount}</span></div>`;
+      return L.divIcon({ html, className: 'custom-cluster', iconSize: L.point(size, size) });
+    }
+
+    // show QR (kept)
     function showQR(lat,lng,name){
       const url = `https://maps.google.com/?q=${lat},${lng}(${encodeURIComponent(name)})`;
       const qEl = document.getElementById('qrcode'); qEl.innerHTML='';
@@ -234,24 +275,132 @@
       document.getElementById('qrModal').classList.remove('hidden'); document.getElementById('qrModal').style.display='flex';
     }
 
-    function createMarker(r){
-      if(!r || typeof r.lat!=='number' || typeof r.lng!=='number') return null;
-      const colorMap = {'Food':'#9333EA','Shelter':'#b45309','Injection Site':'#10B981','Harm Reduction':'#06b6d4','Naloxone':'#3B82F6','Washrooms':'#14B8A6','Clothing':'#0ea5a4','Urgent':'#ef4444','Mental Health':'#EC4899','Hotline':'#6B7280','Outreach':'#F59E0B','Support':'#F97316','Drop-in':'#8B5CF6','Medical':'#0ea5a4','Other':'#6B7280'};
-      const color = colorMap[r.type] || '#6B7280';
-      const icon = L.divIcon({ html:`<div style="width:28px;height:28px;border-radius:50%;background:${color};border:3px solid #fff"></div>`, iconSize:[28,28], iconAnchor:[14,14] });
-      const m = L.marker([r.lat,r.lng],{icon});
-      m.bindPopup(popupHtml(r),{maxWidth:320});
-      m.resource = r;
-      return m;
+    document.getElementById('closeQR').addEventListener('click', ()=>{ document.getElementById('qrModal').classList.add('hidden'); document.getElementById('qrModal').style.display='none'; });
+
+    // routing helper: ensures L.Routing is available, tries load fallback if missing
+    async function ensureRoutingLib(){
+      if(window.L && window.L.Routing) return true;
+      // try to dynamically load from CDN
+      return new Promise((resolve) => {
+        console.warn('Routing lib missing. Loading from CDN...');
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js';
+        s.onload = ()=> {
+          setTimeout(()=> resolve(!!(window.L && window.L.Routing)), 250);
+        };
+        s.onerror = ()=> resolve(false);
+        document.head.appendChild(s);
+      });
     }
 
-    function renderMarkers(list){
-      markers.forEach(m => { try{ map.removeLayer(m); }catch(e){} });
-      markers = [];
-      list.forEach(r => {
-        const m = createMarker(r);
-        if(m){ m.addTo(map); markers.push(m); }
+    // Draw route to lat,lng. If routing is available and userLocation exists it will render in-map.
+    async function routeTo(lat,lng,name){
+      if(!map) { alert('Map not ready'); return; }
+      // ensure we have user location
+      if(!userLocation){
+        // try to request quickly
+        try{
+          await new Promise((resolve,reject)=>{
+            navigator.geolocation.getCurrentPosition(pos=>{
+              userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+              resolve();
+            }, err => { reject(err); }, { timeout:7000 });
+          });
+        }catch(e){
+          // can't get geolocation -> fallback to opening Google Maps with destination only
+          const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`;
+          window.open(url, '_blank');
+          return;
+        }
+      }
+
+      // ensure routing lib present
+      const ok = await ensureRoutingLib();
+      if(!ok || !window.L.Routing){
+        // fallback: open Google Maps with origin and dest
+        const origin = `${userLocation.lat},${userLocation.lng}`;
+        const destin = `${lat},${lng}`;
+        const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destin}&travelmode=walking`;
+        window.open(url, '_blank');
+        return;
+      }
+
+      // remove previous control
+      try{ if(routingControl){ map.removeControl(routingControl); routingControl = null; } } catch(e){ console.warn('remove previous route error', e); }
+
+      routingControl = L.Routing.control({
+        waypoints: [ L.latLng(userLocation.lat, userLocation.lng), L.latLng(lat,lng) ],
+        router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+        showAlternatives: false,
+        fitSelectedRoute: true,
+        lineOptions: { styles:[{color: '#2ee0b6', opacity:0.95, weight:6}] },
+        createMarker: function() { return null; }, // do not create default routing markers
+      }).addTo(map);
+
+      routingControl.on('routesfound', function(e){
+        const route = e.routes && e.routes[0];
+        if(route) {
+          map.fitBounds(route.bounds, { padding:[40,40] });
+        }
       });
+      routingControl.on('routingerror', function(err){
+        console.warn('Routing error', err);
+        alert('Routing service error — falling back to external directions.');
+        const origin = `${userLocation.lat},${userLocation.lng}`;
+        const destin = `${lat},${lng}`;
+        window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destin}&travelmode=walking`, '_blank');
+      });
+    }
+
+    // Render hotlines (kept)
+    function renderHotlines(list, currentLang='en'){
+      const hotEl = document.getElementById('hotlines'); hotEl.innerHTML='';
+      const hotlist = list.filter(r => r.type && r.type.toLowerCase().includes('hotline'));
+      const final = hotlist.length ? hotlist : [{name:"BC 211", phone:"211", description:"Information & referrals across BC"}];
+      final.forEach(h => {
+        let displayName = h.name, displayDesc = h.description;
+        if(h.translations && h.translations[currentLang]){ const t = h.translations[currentLang]; if(t.name) displayName = t.name; if(t.description) displayDesc = t.description; }
+        const d = document.createElement('div');
+        d.style.padding='10px'; d.style.borderRadius='8px'; d.style.background='rgba(255,255,255,0.02)';
+        d.innerHTML = `<strong>${displayName}</strong><div style="font-size:13px;color:var(--muted)">${displayDesc||''}</div><div style="margin-top:8px"><a class="chip" href="tel:${h.phone}">${h.phone}</a></div>`;
+        hotEl.appendChild(d);
+      });
+    }
+
+    // build filters UI
+    function buildFilters(resources){
+      const set = new Set(resources.map(r => r.type || 'Other'));
+      const filters = document.getElementById('filters'); filters.innerHTML='';
+      Array.from(set).sort().forEach(cat => {
+        const btn = document.createElement('button'); btn.className='category'; btn.textContent=cat; btn.dataset.cat=cat; btn.dataset.active='1';
+        btn.addEventListener('click', ()=> { btn.dataset.active = btn.dataset.active==='1' ? '0' : '1'; btn.style.opacity = btn.dataset.active==='1' ? '1' : '0.45'; applyFilters(); });
+        filters.appendChild(btn);
+      });
+      const clear = document.createElement('button'); clear.className='category'; clear.textContent='Clear filters';
+      clear.addEventListener('click', ()=> { filters.querySelectorAll('button.category').forEach(b=>{ b.dataset.active='1'; b.style.opacity='1'; }); applyFilters(); });
+      filters.appendChild(clear);
+    }
+
+    // filters + search
+    function applyFilters(){
+      const active = Array.from(document.querySelectorAll('#filters button.category')).filter(b=>b.dataset.active==='1').map(b=>b.dataset.cat);
+      const q = (document.getElementById('searchInput').value||'').toLowerCase().trim();
+      const filtered = resourcesGlobal.filter(r => {
+        const inCat = active.includes(r.type || 'Other');
+        const hay = `${r.name||''} ${r.type||''} ${r.address||''} ${r.phone||''}`.toLowerCase();
+        const match = q === '' || hay.includes(q);
+        return inCat && match;
+      });
+      // re-build cluster layer with filtered items
+      if(markersLayer){
+        markersLayer.clearLayers();
+        filtered.forEach(r => {
+          const m = createMarker(r);
+          if(m) markersLayer.addLayer(m);
+        });
+      }
+      renderList(filtered);
+      renderHotlines(resourcesGlobal, (document.getElementById('languageSelect')?.value || 'en'));
     }
 
     function renderList(list){
@@ -268,93 +417,37 @@
       });
     }
 
-    function renderHotlines(list){
-      const hotEl = document.getElementById('hotlines'); hotEl.innerHTML='';
-      const hotlist = list.filter(r => r.type && r.type.toLowerCase().includes('hotline'));
-      const final = hotlist.length ? hotlist : [{name:"BC 211", phone:"211", description:"Information & referrals across BC"}];
-      final.forEach(h => {
-        let displayName = h.name, displayDesc = h.description;
-        if(h.translations && h.translations[currentLang]){ const t = h.translations[currentLang]; if(t.name) displayName = t.name; if(t.description) displayDesc = t.description; }
-        const d = document.createElement('div');
-        d.style.padding='10px'; d.style.borderRadius='8px'; d.style.background='rgba(255,255,255,0.02)';
-        d.innerHTML = `<strong>${displayName}</strong><div style="font-size:13px;color:var(--muted)">${displayDesc||''}</div><div style="margin-top:8px"><a class="chip" href="tel:${h.phone}">${h.phone}</a></div>`;
-        hotEl.appendChild(d);
-      });
-    }
-
-    function routeTo(lat,lng,name){
-      if(window.L && L.Routing && userLocation){
-        // remove existing routing control
-        try{ if(routingControl){ map.removeControl(routingControl); routingControl = null; } } catch(e){}
-        routingControl = L.Routing.control({
-          waypoints: [ L.latLng(userLocation.lat, userLocation.lng), L.latLng(lat, lng) ],
-          routeWhileDragging: false,
-          showAlternatives: false,
-          lineOptions: { styles:[{color: '#2ee0b6', opacity:0.9, weight:6}] }
-        }).addTo(map);
-        routingControl.on('routesfound', function(e){ const route = e.routes[0]; map.fitBounds(route.bounds, {padding:[40,40]}); });
-      } else {
-        // fallback: open Google Maps
-        if(!userLocation){ alert('Please click "Find me" first (geolocation) to use in-map routing. Falling back to Google Maps.'); }
-        const url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation ? userLocation.lat + ',' + userLocation.lng : ''}&destination=${lat},${lng}&travelmode=walking`;
-        window.open(url,'_blank');
-      }
-    }
-
-    function buildFilters(resources){
-      const set = new Set(resources.map(r => r.type || 'Other'));
-      const filters = document.getElementById('filters'); filters.innerHTML='';
-      Array.from(set).sort().forEach(cat => {
-        const btn = document.createElement('button'); btn.className='category'; btn.textContent=cat; btn.dataset.cat=cat; btn.dataset.active='1';
-        btn.addEventListener('click', ()=> { btn.dataset.active = btn.dataset.active==='1' ? '0' : '1'; btn.style.opacity = btn.dataset.active==='1' ? '1' : '0.45'; applyFilters(); });
-        filters.appendChild(btn);
-      });
-      const clear = document.createElement('button'); clear.className='category'; clear.textContent='Clear filters';
-      clear.addEventListener('click', ()=> { filters.querySelectorAll('button.category').forEach(b=>{ b.dataset.active='1'; b.style.opacity='1'; }); applyFilters(); });
-      filters.appendChild(clear);
-    }
-
-    function applyFilters(){
-      const active = Array.from(document.querySelectorAll('#filters button.category')).filter(b=>b.dataset.active==='1').map(b=>b.dataset.cat);
-      const q = (document.getElementById('searchInput').value||'').toLowerCase().trim();
-      const filtered = resourcesGlobal.filter(r => {
-        const inCat = active.includes(r.type || 'Other');
-        const hay = `${r.name||''} ${r.type||''} ${r.address||''} ${r.phone||''}`.toLowerCase();
-        const match = q === '' || hay.includes(q);
-        return inCat && match;
-      });
-      renderMarkers(filtered); renderList(filtered);
-    }
-
+    // Apply language translations for UI / popups / hotlines
     function applyLanguage(lang){
-      currentLang = lang in UI_STRINGS ? lang : 'en';
-      const s = UI_STRINGS[currentLang] || UI_STRINGS.en;
-      document.getElementById('listToggle').textContent = s.list;
-      document.getElementById('locateBtn').textContent = s.find;
-      document.getElementById('emergencyBtn').textContent = s.emergency;
-      document.getElementById('searchInput').placeholder = s.search;
-      if(['ar','fa','ur'].includes(currentLang)) document.documentElement.classList.add('rtl'); else document.documentElement.classList.remove('rtl');
-      markers.forEach(m => { try{ m.setPopupContent(popupHtml(m.resource)); }catch(e){} });
-      renderHotlines(resourcesGlobal);
+      const current = UI_STRINGS[lang] || UI_STRINGS.en;
+      document.getElementById('listToggle').textContent = current.list;
+      document.getElementById('locateBtn').textContent = current.find;
+      document.getElementById('emergencyBtn').textContent = current.emergency;
+      document.getElementById('searchInput').placeholder = current.search;
+      if(['ar','fa','ur'].includes(lang)) document.documentElement.classList.add('rtl'); else document.documentElement.classList.remove('rtl');
+      // update popups (markers are inside cluster)
+      if(markersLayer){
+        markersLayer.eachLayer(layer => {
+          if(layer.resource && layer.getPopup) layer.setPopupContent(popupHtml(layer.resource));
+        });
+      }
+      renderHotlines(resourcesGlobal, lang);
     }
 
-    document.getElementById('languageSelect').addEventListener('change', e => applyLanguage(e.target.value));
-    document.getElementById('listToggle').addEventListener('click', ()=> document.getElementById('listView').classList.toggle('hidden'));
-    document.getElementById('searchInput').addEventListener('input', applyFilters);
-
+    // locate button - sets userLocation and adds a "you" circle
     document.getElementById('locateBtn').addEventListener('click', ()=>{
       if(!navigator.geolocation) return alert('Geolocation not supported');
       document.getElementById('locateBtn').textContent = 'Locating...';
       navigator.geolocation.getCurrentPosition(pos=>{
         userLocation = {lat: pos.coords.latitude, lng: pos.coords.longitude};
         if(window._you) try{ map.removeLayer(window._you); }catch(e){}
-        window._you = L.circleMarker([userLocation.lat, userLocation.lng], {radius:8,color: '#2ee0b6', fillColor: '#2ee0b6', fillOpacity:1}).addTo(map).bindPopup(UI_STRINGS[currentLang].you || 'You are here').openPopup();
+        window._you = L.circleMarker([userLocation.lat, userLocation.lng], {radius:8,color: '#2ee0b6', fillColor: '#2ee0b6', fillOpacity:1}).addTo(map).bindPopup(UI_STRINGS[document.getElementById('languageSelect').value].you || 'You are here').openPopup();
         map.setView([userLocation.lat, userLocation.lng], 15);
-        document.getElementById('locateBtn').textContent = UI_STRINGS[currentLang].find || 'Find me';
-      }, err => { alert('Unable to get location: ' + (err.message || err.code)); document.getElementById('locateBtn').textContent = UI_STRINGS[currentLang].find || 'Find me'; }, { enableHighAccuracy:true, timeout:10000 });
+        document.getElementById('locateBtn').textContent = UI_STRINGS[document.getElementById('languageSelect').value].find || 'Find me';
+      }, err => { alert('Unable to get location: ' + (err.message || err.code)); document.getElementById('locateBtn').textContent = UI_STRINGS[document.getElementById('languageSelect').value].find || 'Find me'; }, { enableHighAccuracy:true, timeout:10000 });
     });
 
-    // Accessibility controls
+    // accessibility
     document.getElementById('contrastToggle').addEventListener('click', ()=> document.documentElement.classList.toggle('high-contrast'));
     document.getElementById('dyslexicToggle').addEventListener('click', ()=> document.documentElement.classList.toggle('dyslexic'));
     document.getElementById('fontInc').addEventListener('click', ()=> { const r=document.documentElement; const size=parseFloat(getComputedStyle(r).fontSize||16); r.style.fontSize=(size+1)+'px'; });
@@ -373,45 +466,72 @@
       if(panel.classList.contains('minimized')) controls.style.display = 'none'; else controls.style.display = 'block';
     });
 
-    // startup
+    // main startup
     (async function start(){
       try{
         const resources = await loadResources('dtes-resources.json', 7000);
-        window._embeddedResources = resources.slice(0,10);
-        resourcesGlobal = resources;
-
-        // wait for leaflet to appear
-        const maxWait=5000; let waited=0;
-        while(typeof L === 'undefined' && waited < maxWait){ await new Promise(r=>setTimeout(r,100)); waited+=100; }
+        resourcesGlobal = resources || [];
+        // wait until leaflet is loaded (from loader above)
+        let waited = 0, waitMax = 6000;
+        while(typeof L === 'undefined' && waited < waitMax){ await new Promise(r=>setTimeout(r,100)); waited+=100; }
         if(typeof L === 'undefined'){
-          document.getElementById('loadingMsg').textContent = 'Map libraries missing — limited UI';
-          hideOverlay('Map libraries missing. Include /libs/leaflet to enable full map features.');
-          // still build textual UI
-          buildFilters(resourcesGlobal);
-          renderList(resourcesGlobal);
-          renderHotlines(resourcesGlobal);
+          hideOverlay('Map libraries not loaded — check /libs/ or CDN. UI will still work in text mode.');
+          buildFilters(resourcesGlobal); renderList(resourcesGlobal); renderHotlines(resourcesGlobal);
           return;
         }
 
-        // initialize map
+        // Initialize map
         map = L.map('map').setView([49.2819, -123.1000], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'© OpenStreetMap contributors'}).addTo(map);
 
+        // create marker cluster group
+        markersLayer = L.markerClusterGroup({
+          chunkedLoading: true,
+          maxClusterRadius: 50,
+          iconCreateFunction: makeClusterIcon,
+          spiderfyOnMaxZoom: true,
+          showCoverageOnHover: true
+        });
+        // add markers into cluster
+        resourcesGlobal.forEach(r => {
+          const m = createMarker(r);
+          if(m) markersLayer.addLayer(m);
+        });
+        map.addLayer(markersLayer);
+
+        // cluster click behaviour: zoom in
+        markersLayer.on('clusterclick', function(a){
+          // default zoom-in behavior
+          map.fitBounds(a.layer.getBounds(), { padding:[40,40] });
+        });
+
+        // when a marker popup opens, center it a little above so popup isn't off-screen
+        map.on('popupopen', function(e){
+          const px = map.project(e.popup._latlng);
+          px.y -= 120; // shift up
+          map.setView(map.unproject(px), map.getZoom(), { animate:true });
+        });
+
         buildFilters(resourcesGlobal);
-        renderMarkers(resourcesGlobal);
         renderList(resourcesGlobal);
         renderHotlines(resourcesGlobal);
+
+        // connect UI handlers
+        document.getElementById('languageSelect').addEventListener('change', (e)=> applyLanguage(e.target.value));
+        document.getElementById('listToggle').addEventListener('click', ()=> document.getElementById('listView').classList.toggle('hidden'));
+        document.getElementById('searchInput').addEventListener('input', applyFilters);
+
         applyLanguage(document.getElementById('languageSelect').value || 'en');
         hideOverlay();
-      }catch(e){
-        console.error('Startup error', e);
-        hideOverlay('Startup error — check console');
+      }catch(err){
+        console.error('Startup error', err);
+        hideOverlay('Startup error — check console for details');
       }
     })();
 
-    // service worker registration (optional)
+    // register service worker if present
     if('serviceWorker' in navigator){
-      navigator.serviceWorker.register('/sw.js').catch(e => console.warn('SW register failed', e));
+      navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('SW register failed', e));
     }
   </script>
 </body>
