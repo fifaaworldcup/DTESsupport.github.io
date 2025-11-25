@@ -254,7 +254,7 @@
       },
       "hi": {
         "name": "बीसी 211",
-        "description": "ब्रिटिश कोलंबिया भर में सूचना और रेफरल"
+        "description": "ब्रिटिश कोलंबिया भर میں सूचना اور حوالہ"
       },
       "ur": {
         "name": "بی سی 211",
@@ -874,7 +874,7 @@
     "lat": 49.2856,
     "lng": -123.09741,
     "type": "Harm Reduction",
-    "description": "Safer supplies and overdose prevention work.",
+    "description": "Safer use supplies and overdose prevention work.",
     "hours": "09:00–19:00",
     "phone": "604-555-1037",
     "address": "460 E Hastings St",
