@@ -5,84 +5,116 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Vancouver DTES Lifeline Map</title>
 
-  <!-- Icons (place /icons/icon-192.png and -512.png) -->
-  <link rel="icon" href="/icons/icon-192.png" />
-
-  <!-- Local vendor CSS -->
+  <!-- local vendor CSS: ensure these exist in /libs and /css -->
   <link rel="stylesheet" href="/libs/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/libs/leaflet.markercluster/MarkerCluster.css" />
   <link rel="stylesheet" href="/libs/leaflet.markercluster/MarkerCluster.Default.css" />
   <link rel="stylesheet" href="/libs/leaflet-routing-machine/leaflet-routing-machine.css" />
-
-  <!-- Your compiled Tailwind / custom CSS -->
   <link rel="stylesheet" href="/css/tailwind.min.css" />
 
   <style>
-    /* Simple custom dark styling complements Tailwind (override as needed) */
-    html,body,#map { height:100%; }
-    body { background:#000; color:#e6fff6; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
-    .site-header { padding: 2rem; }
-    .control-btn { border:1px solid #47F3C5; color:#47F3C5; background:transparent; padding:0.5rem 0.9rem; border-radius:999px; }
-    .access-panel { position: fixed; left:1.5rem; bottom:2rem; z-index:1400; }
-    .lang-select { background: #0b0b0b; color: #e6fff6; border:1px solid #8aefd6; padding:6px 10px; border-radius:8px; }
-    .loader { position: absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:2000; background: rgba(0,0,0,0.75); }
+    /* keep the look from your uploaded design */
+    body { font-family: 'Nunito Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial; background:#f8fafc; color:#0f172a; }
+    #map { height:70vh; min-height:420px; border-radius:12px; background:#e6eef6; }
+    .control-btn{ padding:.5rem .75rem;border-radius:.6rem;background:#111827;color:#fff;border:none;cursor:pointer }
+    .access-panel { position: fixed; left: 18px; bottom: 18px; z-index:1400; }
+    .loader{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:1600; background:rgba(255,255,255,0.95); }
+    .hidden{ display:none !important; }
+    .high-contrast { filter: contrast(1.25) saturate(1.1); background:#000; color:#fff; }
+    .dyslexic { font-family: 'OpenDyslexic', 'Nunito Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial; }
+    .filter-button.active { transform: scale(1.03); box-shadow: 0 6px 18px rgba(0,0,0,.12); border: 2px solid #1D4ED8; }
   </style>
 </head>
-<body class="antialiased">
+<body>
 
-  <div id="loader" class="loader" aria-hidden="false">
-    <div class="text-center">
-      <h2 class="text-2xl">Loading resources…</h2>
-      <p class="mt-2 text-sm">If this takes long, check console or network.</p>
+  <!-- Loading overlay -->
+  <div id="loadingOverlay" class="loader">
+    <div style="text-align:center;">
+      <div class="spinner mb-4" style="width:40px;height:40px;border:4px solid rgba(0,0,0,0.1);border-left-color:#1D4ED8;border-radius:50%;animation:spin 1s linear infinite"></div>
+      <h2 class="text-2xl font-bold">DTES Lifeline Map</h2>
+      <p class="mt-2 text-sm text-gray-600">Loading resources…</p>
     </div>
   </div>
 
-  <header class="site-header max-w-6xl mx-auto">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-4xl font-bold">Vancouver DTES Lifeline Map</h1>
-        <p class="text-sm opacity-80">Immediate access to food, shelters, harm reduction, and hotlines.</p>
+  <div id="mainAppContent" class="container mx-auto p-4 md:p-8">
+    <header class="bg-white p-6 rounded-xl shadow">
+      <div class="flex justify-between items-start gap-4">
+        <div>
+          <h1 class="text-3xl font-extrabold">Vancouver DTES Lifeline Map</h1>
+          <p class="text-sm text-gray-600">Food, shelters, harm reduction and hotlines — translated and accessible.</p>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <select id="languageSelect" class="px-3 py-1 border rounded bg-white">
+            <option value="en">English</option><option value="ar">العربية</option><option value="fa">فارسی</option><option value="bn">বাংলা</option><option value="hi">हिन्दी</option><option value="ur">اردو</option><option value="pa">ਪੰਜਾਬੀ</option><option value="tl">Tagalog</option><option value="zh">中文</option><option value="es">Español</option><option value="fr">Français</option><option value="nl">Nederlands</option><option value="it">Italiano</option><option value="sv">Svenska</option>
+          </select>
+
+          <button id="findMeBtn" class="control-btn" title="Find my location">Find me</button>
+          <button id="listToggle" class="control-btn" title="Toggle list">List</button>
+        </div>
       </div>
 
-      <div class="flex items-center gap-3">
-        <select id="languageSelect" class="lang-select" aria-label="Select language">
-          <option value="en">English</option>
-          <option value="ar">العربية</option>
-          <option value="fa">فارسی</option>
-          <option value="bn">বাংলা</option>
-          <option value="hi">हिन्दी</option>
-          <option value="ur">اردو</option>
-          <option value="pa">ਪੰਜਾਬੀ</option>
-          <option value="tl">Tagalog</option>
-          <option value="zh">中文</option>
-          <option value="es">Español</option>
-          <option value="fr">Français</option>
-          <option value="nl">Nederlands</option>
-          <option value="it">Italiano</option>
-          <option value="sv">Svenska</option>
-        </select>
-
-        <button id="listToggle" class="control-btn">List view</button>
-        <button id="findMeBtn" class="control-btn">Find me</button>
-        <button id="call911" class="control-btn">911</button>
+      <div class="mt-4">
+        <input id="searchBar" type="text" placeholder="Search by name, type or address" class="w-full p-3 rounded-lg border" />
       </div>
-    </div>
+    </header>
 
-    <div class="mt-6">
-      <input id="searchBox" placeholder="Search by name, type, or service" aria-label="Search"
-             class="w-full p-3 rounded-lg bg-black border border-green-300 text-white" />
-    </div>
-  </header>
+    <section class="grid grid-cols-1 gap-4 mt-6">
+      <div class="bg-white p-4 rounded-xl shadow">
+        <div class="flex gap-3 flex-wrap">
+          <button data-filter="all" class="filter-button bg-gray-700 text-white px-3 py-2 rounded">All</button>
+          <button data-filter="Naloxone" class="filter-button bg-blue-600 text-white px-3 py-2 rounded">Naloxone</button>
+          <button data-filter="Injection Site" class="filter-button bg-green-600 text-white px-3 py-2 rounded">Sites</button>
+          <button data-filter="Detox" class="filter-button bg-orange-500 text-white px-3 py-2 rounded">Detox</button>
+          <button data-filter="Food" class="filter-button bg-purple-600 text-white px-3 py-2 rounded">Food</button>
+          <button data-filter="Shelter" class="filter-button bg-yellow-600 text-white px-3 py-2 rounded">Shelter</button>
+          <button data-filter="Urgent" class="filter-button bg-red-600 text-white px-3 py-2 rounded">Urgent</button>
+          <button data-filter="Washrooms" class="filter-button bg-teal-600 text-white px-3 py-2 rounded">Washrooms</button>
+          <button data-filter="Mental Health" class="filter-button bg-pink-600 text-white px-3 py-2 rounded">Mental</button>
+        </div>
+      </div>
 
-  <main class="max-w-6xl mx-auto relative">
-    <div id="map" style="height:70vh; border-radius:8px; overflow:hidden;"></div>
-  </main>
+      <div id="map" class="rounded-xl shadow-2xl border-4 border-white"></div>
+
+      <aside id="listView" class="hidden bg-white p-4 rounded-xl shadow mt-4">
+        <h3 class="font-semibold">List of resources</h3>
+        <div id="resourceCount" class="text-sm text-gray-500 my-2">—</div>
+        <ul id="resourceList" class="space-y-2"></ul>
+      </aside>
+
+      <footer class="bg-gray-800 text-white p-6 rounded-xl">
+        <h2 class="text-xl font-bold mb-3">Crisis & Hotlines</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <div class="font-semibold">BC 211</div>
+            <a href="tel:211" class="text-lg font-bold">211</a>
+            <div class="text-xs text-gray-300">Information & referrals — 24/7</div>
+          </div>
+          <div>
+            <div class="font-semibold">Crisis Centre Vancouver</div>
+            <a href="tel:6048723311" class="text-lg font-bold">604-872-3311</a>
+            <div class="text-xs text-gray-300">24/7 crisis & suicide prevention</div>
+          </div>
+          <div>
+            <div class="font-semibold">KUU-US Indigenous Line</div>
+            <a href="tel:18005888717" class="text-lg font-bold">1-800-588-8717</a>
+            <div class="text-xs text-gray-300">Indigenous crisis support</div>
+          </div>
+          <div>
+            <div class="font-semibold">Kids Help Phone</div>
+            <a href="tel:18006686868" class="text-lg font-bold">1-800-668-6868</a>
+            <div class="text-xs text-gray-300">Youth 24/7</div>
+          </div>
+        </div>
+        <div class="text-center text-xs text-gray-400 mt-6">Made with ♥ for the DTES community • Keep info up-to-date — call first.</div>
+      </footer>
+    </section>
+  </div>
 
   <!-- Accessibility panel -->
   <div class="access-panel">
-    <div class="bg-black/60 p-4 rounded-lg">
-      <h3 class="font-semibold mb-2">Accessibility</h3>
-      <div class="flex gap-2 flex-wrap">
+    <div class="bg-white p-3 rounded-lg shadow">
+      <div class="flex gap-2 items-center">
         <button id="toggleContrast" class="control-btn">High contrast</button>
         <button id="toggleDyslexic" class="control-btn">Dyslexic font</button>
         <button id="fontDec" class="control-btn">A-</button>
@@ -93,110 +125,113 @@
     </div>
   </div>
 
-  <!-- List view (hidden by default) -->
-  <aside id="listView" class="hidden fixed right-4 top-20 bg-black/80 rounded-lg p-4 w-96 max-h-[70vh] overflow-auto z-1400">
-    <h4 class="font-semibold mb-2">List of resources</h4>
-    <ul id="resourceList" class="space-y-2"></ul>
-  </aside>
+  <!-- quick-exit (safe) -->
+  <button id="quickExitBtn" style="position:fixed;right:18px;bottom:80px;background:#ef4444;color:#fff;padding:8px 10px;border-radius:8px;border:none;display:none;z-index:1500">Quick Exit</button>
 
-  <!-- Map legend + attribution -->
-  <footer class="max-w-6xl mx-auto my-6 text-sm opacity-70">
-    <div>Hotlines and support — translations available. Offline mode: core map and resources work; routing uses approximate straight-line directions when router is offline.</div>
-  </footer>
-
-  <!-- Vendor scripts (local) -->
+  <!-- vendor JS (local) -->
   <script src="/libs/leaflet/leaflet.js"></script>
   <script src="/libs/leaflet.markercluster/leaflet.markercluster.min.js"></script>
   <script src="/libs/leaflet-routing-machine/leaflet-routing-machine.min.js"></script>
   <script src="/libs/qrcode/qrcode.min.js"></script>
 
-  <!-- Your app script (markers + UI) -->
+  <!-- app logic -->
   <script src="/js/markers.js"></script>
 
-  <!-- Service worker registration -->
+  <!-- UI wiring -->
   <script>
+    // on load: wire UI -> markers
+    document.getElementById('languageSelect').value = localStorage.getItem('dtes_lang') || 'en';
+    document.getElementById('languageSelect').addEventListener('change', (e) => {
+      const lang = e.target.value;
+      if (window.rebindTranslations) window.rebindTranslations(lang);
+      if (window.uiTranslate) window.uiTranslate(lang);
+      localStorage.setItem('dtes_lang', lang);
+    });
+
+    document.getElementById('listToggle').addEventListener('click', () => {
+      document.getElementById('listView').classList.toggle('hidden');
+    });
+
+    document.getElementById('findMeBtn').addEventListener('click', () => {
+      if (window.locateMe) window.locateMe();
+    });
+
+    document.querySelectorAll('.filter-button').forEach(btn => {
+      btn.addEventListener('click', ()=>{
+        document.querySelectorAll('.filter-button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const f = btn.dataset.filter || 'all';
+        if (window.filterByType) window.filterByType(f);
+      });
+    });
+
+    // search
+    document.getElementById('searchBar').addEventListener('input', (e) => {
+      const q = e.target.value;
+      if (window.filterResources) window.filterResources(q);
+    });
+
+    // accessibility panel
+    document.getElementById('toggleContrast').addEventListener('click', ()=> document.body.classList.toggle('high-contrast'));
+    document.getElementById('toggleDyslexic').addEventListener('click', ()=> document.body.classList.toggle('dyslexic'));
+    document.getElementById('fontInc').addEventListener('click', ()=> {
+      const s = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      document.documentElement.style.fontSize = (s+1)+'px';
+    });
+    document.getElementById('fontDec').addEventListener('click', ()=> {
+      const s = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      document.documentElement.style.fontSize = Math.max(12,s-1)+'px';
+    });
+    document.getElementById('readPopup').addEventListener('click', ()=> {
+      if (window.readCurrentPopup) window.readCurrentPopup();
+    });
+    document.getElementById('minimizeAccess').addEventListener('click', ()=> {
+      const p = document.querySelector('.access-panel');
+      if (p.style.display === 'none') p.style.display = 'block'; else p.style.display = 'none';
+    });
+
+    // quick exit
+    window.addEventListener('scroll', () => {
+      const btn = document.getElementById('quickExitBtn');
+      btn.style.display = (window.scrollY > 200) ? 'block' : 'none';
+    });
+
+    // UI translate: simple labels
+    window.uiTranslate = function(lang){
+      const labels = {
+        en:{loading:'Loading resources…', find:'Find me', list:'List'},
+        ar:{loading:'جارٍ تحميل الموارد…', find:'أوجدني', list:'قائمة'},
+        fa:{loading:'در حال بارگذاری…', find:'مکان من', list:'فهرست'},
+        bn:{loading:'রিসোর্স লোড হচ্ছে…', find:'আমাকে খুঁজুন', list:'তালিকা'},
+        hi:{loading:'संसाधन लोड हो रहे हैं…', find:'मुझे ढूंढो', list:'सूची'},
+        tl:{loading:'Ina-load ang resources…', find:'Hanapin ako', list:'Listahan'},
+        zh:{loading:'正在加载资源…', find:'找到我', list:'列表'},
+        es:{loading:'Cargando recursos…', find:'Localízame', list:'Lista'},
+        fr:{loading:'Chargement des ressources…', find:'Me localiser', list:'Liste'},
+        nl:{loading:'Resources laden…', find:'Vind mij', list:'Lijst'},
+        it:{loading:'Caricamento risorse…', find:'Trova me', list:'Elenco'},
+        sv:{loading:'Laddar resurser…', find:'Hitta mig', list:'Lista'}
+      };
+      const pick = labels[lang] || labels.en;
+      const loader = document.getElementById('loadingOverlay');
+      if (loader) loader.querySelector('p').textContent = pick.loading;
+      const fm = document.getElementById('findMeBtn');
+      if (fm) fm.textContent = pick.find;
+      const lt = document.getElementById('listToggle');
+      if (lt) lt.textContent = pick.list;
+    };
+
+    // once markers.js completes load it will call window.appReady (we set it there). Also call uiTranslate now.
+    window.appReady = function(){ document.getElementById('loadingOverlay').style.display = 'none'; document.getElementById('mainAppContent').style.opacity='1'; };
+    window.uiTranslate(localStorage.getItem('dtes_lang') || 'en');
+  </script>
+
+  <script>
+    // register service worker if you have sw.js in repo root
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(err => console.warn('SW register failed', err));
+      navigator.serviceWorker.register('/sw.js').catch(()=>{/*sw fail*/});
     }
   </script>
 
-  <!-- Inline small helper to wire language select to markers (markers.js exposes functions) -->
-  <script>
-    (function(){
-      const langSelect = document.getElementById('languageSelect');
-      // sync default language
-      window.currentLanguage = window.currentLanguage || 'en';
-      if (langSelect) {
-        langSelect.value = window.currentLanguage;
-        langSelect.addEventListener('change', () => {
-          window.currentLanguage = langSelect.value;
-          // markers.js exposes rebindTranslations()
-          if (window.rebindTranslations) window.rebindTranslations(window.currentLanguage);
-        });
-      }
-
-      // accessibility controls
-      document.getElementById('toggleContrast').addEventListener('click', () => {
-        document.body.classList.toggle('high-contrast');
-      });
-      document.getElementById('toggleDyslexic').addEventListener('click', () => {
-        document.body.classList.toggle('dyslexic');
-      });
-      document.getElementById('fontInc').addEventListener('click', () => {
-        const s = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-        document.documentElement.style.fontSize = (s + 1) + 'px';
-      });
-      document.getElementById('fontDec').addEventListener('click', () => {
-        const s = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-        document.documentElement.style.fontSize = Math.max(12,s - 1) + 'px';
-      });
-      document.getElementById('readPopup').addEventListener('click', () => {
-        if (window.readCurrentPopup) window.readCurrentPopup();
-      });
-      document.getElementById('minimizeAccess').addEventListener('click', (e) => {
-        const panel = e.target.closest('.access-panel');
-        if (panel) {
-          panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-        }
-      });
-
-      // list view toggle
-      const listBtn = document.getElementById('listToggle');
-      const listView = document.getElementById('listView');
-      listBtn.addEventListener('click', () => {
-        if (listView.classList.contains('hidden')) {
-          listView.classList.remove('hidden');
-        } else {
-          listView.classList.add('hidden');
-        }
-      });
-
-      // search
-      const searchBox = document.getElementById('searchBox');
-      searchBox.addEventListener('input', (e) => {
-        if (window.filterResources) window.filterResources(e.target.value);
-      });
-
-      // find me
-      document.getElementById('findMeBtn').addEventListener('click', () => {
-        if (window.locateMe) window.locateMe();
-      });
-
-      // 911 button shortcut
-      document.getElementById('call911').addEventListener('click', () => {
-        alert('Call 911 in an emergency. On mobile the dialer will open (if allowed).');
-        if (navigator.userAgent && /Mobi/.test(navigator.userAgent)) {
-          window.location.href = 'tel:911';
-        }
-      });
-
-    })();
-  </script>
-
-  <noscript>
-    <div style="position:fixed;left:0;right:0;top:0;background:#ffefef;color:#360000;padding:8px;text-align:center;">
-      JavaScript is required for full functionality.
-    </div>
-  </noscript>
 </body>
 </html>
